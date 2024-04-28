@@ -134,6 +134,18 @@ if you update the pyarrow dependencies with this it should work
 
 this will complete the installation
 
+#yolo-world installation
+
+https://blog.roboflow.com/what-is-yolo-world/
+https://docs.ultralytics.com/models/yolo-world/#set-prompts
+https://huggingface.co/spaces/SkalskiP/YOLO-World
+https://supervision.roboflow.com/develop/notebooks/zero-shot-object-detection-with-yolo-world/#final-result
+
+git clone --recursive https://github.com/AILab-CVC/YOLO-World.git
+pip install torch wheel -q
+pip install -e .
+
+
 
       
 
