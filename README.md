@@ -147,6 +147,90 @@ pip install -e .
 
 
 
+
+#literature:
+
+https://www.sciencedirect.com/science/article/pii/S092427162300223X
+https://nihalsid.github.io/panoptic-lifting/
+https://github.com/xheon/panoptic-reconstruction
+
+
+
+
+
+# NEW GUIDE
+
+# installation:
+
+first install the mamba env
+
+```
+mamba env create -f environment.yml
+conda activate pan_seg_3d
+cd to/ros/workspace
+catkin build
+```
+
+
+
+under the mamba env to start the camera and you get this error:
+
+even after refreshing the cache: Failed to load library /home/vale/mambaforge/envs/pan_seg_3d/lib//librealsense2_camera.so. Make sure that you are calling the PLUGINLIB_EXPORT_CLASS macro in the library code, and that names are consistent between this macro and your XML. Error string: Could not load library (Poco exception = libudev.so.0: cannot open shared object file: No such file or directory)
+
+it means that the librealsense2_camera.so is not linking correctly to the libudev.so.0 library (you can check it by doing from terminal ldd librealsense2_camera.so in the folder in which the lib is contained)
+this is due to the fact that probably you have libudev.so.1 (a more recent version of libudev installed)
+in order to fix go to the path/to/pan_seg_3d/lib/ an in a terminal type:
+
+```
+ sudo ln -s libudev.so.1 libudev.so.0
+```
+
+to create a symbolic link to libudev.so.1 inside the pan_seg_3d/lib/ folder. This shoudl fix the issue
+
+
+
+# execute
+
+Then open up terminals A, B
+
+
+terminal A
+```
+eval "$(/home/vale/mambaforge/bin/conda shell.bash hook)" 
+conda activate pan_seg_3d 
+cd  to/ros/workspace/cotaining/packages
+source ./devel/setup.bash
+```
+
+terminal B 
+```
+eval "$(/home/vale/mambaforge/bin/conda shell.bash hook)" 
+conda activate pan_seg_3d
+cd  to/ros/workspace/cotaining/packages
+source ./devel/setup.bash
+```
+
+
+In terminal A start the the camera feed
+
+```
+roslaunch realsense2_camera rs_camera.launch depth_width:=424 depth_height:=240 depth_fps:=30 color_width:=424 color_height:=240 color_fps:=30 align_depth:=true
+```
+
+to test if everything is right in terminal B do:
+
+```
+rqt_image_view
+```
+
+
+in terminal B start the main code
+
+```
+rosrun rosrun 3dPan main.py
+```
+
+
       
 
 
