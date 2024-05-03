@@ -33,6 +33,8 @@ import time  # Import the time module
 # 7.2 if the label is stuff i could keep adding point to the object for a long time without fully covering it. In case of stuff i'm more interested in his 3d boundary rather rather than the point inside it 
 #     (but we can look into that later and for now focus on objects and not use any stuff label)
 # 8. once an object is fully covered i can get a couple of take to densify it and get a better 3d representation of it using the current mask and the depth map and a 3d bounding box to get a full coverage of it
+# at the end of this i have the 3d representation of the object in my current scene with semantic information associated to it.
+# moreover by exploiting the semantic meaning of the class i can easily understand if an object is a part of another object or if they are two different object (like flower > plant > tree)
 
 
 
