@@ -14,6 +14,28 @@ from ultralytics import YOLO
 from ultralytics import FastSAM
 from ultralytics.models.fastsam import FastSAMPrompt
 import time  # Import the time module
+
+
+# define the algorithm:
+
+# 1. zero 3d points no images
+# 2. get the image and the depth image
+# 3. extract the mask for the images and the four bounding box points in 3d (each mask account for a different object in the scene)
+# 4. extract point descriptors for each mask
+# 4. using the depth map and the camera position and orientation i check if i have an object already instatiated in the proximity of the 3d world
+# 5. in order to check if an object is already there look in my object kdtree (one situationt that could happen is that i have to BB that are one in another so i could have more that one object to test). (here i assume that the object is  a collection of 3d points and 2d features associated to them) 
+# 5.1. if the object is there (we could use the object mask boundary to create a 3d bounding box and see if anything is there) i check if the 2d descriptor of the point i collected before match with the one in the mask. any new features point not mathching i add to the object structure with the label 
+#      any descriptor matching i update the label count associated to each point. a good indication that two object are different is that points are in different class. if two object are in the same class 
+#      they will belong to different mask which account for the instance segmentation
+# 5.2. if the object is not there (we could use object boundary to create a 3d bounding box and see if anything is there) i create a new object and add the 3d points and the 2d features to the object structure  
+# 6 i keep update the object and i keep track of the current object class by doing a majority voting on the label associated to each point in the object
+# 7.1 from the label i can easily distiguish between stuff and object. is a label is an object i can epxect that at some i will fully cover the 3d point and ideally is hould walk al around it
+# 7.2 if the label is stuff i could keep adding point to the object for a long time without fully covering it. In case of stuff i'm more interested in his 3d boundary rather rather than the point inside it 
+#     (but we can look into that later and for now focus on objects and not use any stuff label)
+# 8. once an object is fully covered i can get a couple of take to densify it and get a better 3d representation of it using the current mask and the depth map and a 3d bounding box to get a full coverage of it
+
+
+
 @dataclass
 class ImageData:
     rgb_image: np.ndarray
@@ -26,11 +48,12 @@ class Rois:
     back to the original full image.
 
     Attributes:
-        image (numpy.ndarray): The ROI image extracted from the original image.
+        images list(numpy.ndarray): The ROI image extracted from the original image.
         x1 (int): The x-coordinate of the top-left corner of the ROI in the original image.
         y1 (int): The y-coordinate of the top-left corner of the ROI in the original image.
         x2 (int): The x-coordinate of the bottom-right corner of the ROI in the original image.
         y2 (int): The y-coordinate of the bottom-right corner of the ROI in the original image.
+        masks list(): associated to each roi
     """
     
     def __init__(self, images:list, x1:list, y1:list, x2:list, y2:list):
@@ -43,10 +66,51 @@ class Rois:
             x2, y2 (int): Coordinates of the bottom-right corner of the ROI in the original image.
         """
         self.images = images
+        # here i want to store the masks associated to each roi 
+        self.masks = []
         self.x1 = x1
         self.y1 = y1
         self.x2 = x2
         self.y2 = y2
+
+    # in order to guarantee the correct mathching between rois and mask that should be called in order to associate the mask to the correct roi
+    def add_mask(self, mask):
+        """
+        Add a mask to the list of masks associated with the ROI.
+        
+        Args:
+            mask: The mask to add to the list.
+        """
+        self.masks.append(mask)
+
+
+    def apply_roi_masks_to_original(self,image):
+        """
+        Apply an ROI mask back to the original image at the specified bounding box location.
+
+        Args:
+            image (numpy.ndarray): The original image.
+            roi_mask (numpy.ndarray): The mask obtained from the ROI.
+            bbox (tuple): The bounding box coordinates (x1, y1, x2, y2) from which the ROI was extracted.
+
+        Returns:
+            numpy.ndarray: The original image with the ROI mask applied.
+        """
+        h, w = image.shape[:2]  # Height and width of the original image
+
+        # Create a full-size mask that matches the original image dimensions
+        full_mask = np.zeros((h, w), dtype=np.uint8)
+
+        # Ensure the ROI mask fits into the full mask at the specified coordinates
+        for i in len(self.images):
+            full_mask[self.y1[i]:self.y2[i], self.x1[i]:self.x2[i]] = self.masks[i]
+
+        # Apply the mask to the original image
+        # For visualization, you can color the mask region - here we simply highlight it
+        masked_image = image.copy()
+        masked_image[full_mask > 0] = (255, 0, 0)  # Example: paint the mask region blue
+
+        return masked_image
 
     def map_point_to_original(self, px, py, roi_index):
         """
