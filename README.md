@@ -224,7 +224,15 @@ rqt_image_view
 ```
 
 
-in terminal B start the main code
+in terminal B start the main code 
+if the terminal B is located on a different machine w.r.t. the main code here you need to setup two environmental variables
+
+```
+# this with the IP of the master location
+export ROS_MASTER_URI=http://192.168.1.27:11311/  
+# this with the IP of the machine where terminal B is hosted
+export ROS_IP=192.168.1.27
+```
 
 ```
 rosrun rosrun 3dPan main.py
