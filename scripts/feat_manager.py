@@ -2,6 +2,7 @@ import torch
 from lightglue import LightGlue, SuperPoint, DISK
 from lightglue.utils import load_image, rbd
 from lightglue import viz2d
+import numpy as np
 
 
 class FeatureManager:
@@ -17,18 +18,32 @@ class FeatureManager:
         self.existing_keypoints = []
         self.existing_descriptors = []
 
-    def process_new_image(self, image):
-        # Extract features from the new image
-        feats = self.extract_features(image)
+    def process_new_image(self, image, rois):
+        # Create an image where only the rois are visible
+        rois_image = self.create_masked_image(image, rois)
+        
+        # Extract features from the masked image
+        feats = self.extract_features(rois_image)
+        
         if self.existing_descriptors:  # Only compare if there are existing features
             if not self.is_matching_existing_features(feats):
                 self.store_new_features(feats)
-                print("New features stored.")
+                print("New features stored from ROIs.")
             else:
-                print("Existing features matched.")
+                print("Existing features from ROIs matched.")
         else:
             self.store_new_features(feats)  # Store features if no existing features are present
-            print("Initial features stored.")
+            print("Initial features from ROIs stored.")
+
+    def create_masked_image(self, image, rois):
+        # Start with a black image of the same size as the original
+        masked_image = np.zeros_like(image)
+        
+        # Fill in the regions defined by ROIs from the Roi object
+        for img, x1, y1, x2, y2 in zip(rois.images, rois.x1, rois.y1, rois.x2, rois.y2):
+            masked_image[y1:y2, x1:x2] = img
+
+        return masked_image
 
     def extract_features(self, image):
         # Prepare the image and extract features
