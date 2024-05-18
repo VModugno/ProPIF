@@ -167,6 +167,15 @@ first install the mamba env
 ```
 mamba env create -f environment.yml
 conda activate pan_seg_3d
+```
+
+to download and install lightglue ensure that the terminal env is pan_seg_3d (in any folder you like):
+```
+git clone https://github.com/cvg/LightGlue.git && cd LightGlue
+python -m pip install -e .
+```
+then the packaged need to be compiled
+```
 cd to/ros/workspace
 catkin build
 ```
