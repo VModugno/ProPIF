@@ -3,10 +3,65 @@ from lightglue import LightGlue, SuperPoint, DISK
 from lightglue.utils import load_image, rbd
 from lightglue import viz2d
 import numpy as np
+import pymc as pm
 
+
+# this class contains all the potential objects that has been extracted so far from the image
+class PotentialObjects:
+    def __init__(self, classes_number):
+        # here i have all the list of the existing keypoints and descriptors
+        self.classes_number = classes_number
+        self.existing_keypoints = []
+        self.existing_descriptors = []
+        # object_id is the list of the object id (the keypoint that belongs to the same object has the same id)
+        # keypoints that sit in the same roi the first time are assigned to the same new object id
+        # once we are s
+        self.object_id = []
+        
+        #self.alpha = np.ones(classes_number)
+        #self.p_label = pm.Dirichlet('class_probs', a=np.ones(classes_number))  # Uniform prior over the simplex
+        self.alpha = []
+        self.p_label = [] 
+       
+    def add_new_object(self, keypoints, descriptors):
+        # Store new keypoints and descriptors
+        self.existing_keypoints.append(keypoints)
+        self.existing_descriptors.append(descriptors)
+        # assign a new object id to the new object
+        self.object_id.append(len(self.object_id))
+        self.alpha.append(np.ones(self.classes_number))
+        self.p_label.append(pm.Dirichlet('class_probs', a=np.ones(self.classes_number)))  # Uniform prior over the simplex
+
+    def update_model(self,one_hot_label, object_id):
+        """
+        Update the model with a new observation and sample from the posterior.
+        
+        Parameters:
+        - one_hot_label: One-hot encoded label, e.g., [0, 1, 0]
+        
+        Returns:
+        - trace: The trace from the sampling
+        """
+        # Update the prior parameters
+        self.alpha[object_id,:] += one_hot_label  # Update alpha directly here
+
+        # Reset model's parameter 'a' with updated alpha
+        self.p_label[object_id]['class_probs'].distribution.a.set_value(self.alpha)
+        
+    def evaluate_model(self,object_id):
+         # Sampling using NUTS via JAX with numpyro backend
+        trace = pm.sampling_jax.sample_numpyro_nuts(model=self.p_label[object_id], draws=500, tune=200, target_accept=0.9, random_seed=42)
+    
+        return trace
+       
+# once the object has been fully identified its point are stored using this class which contains the 3d point cloud of the object and the object center
+# the object center is the center of the object in the image and other information such as preshape position and oriention to interact with the object    
+class threeDObject:
+    # this class need to contains the 3d point cloud 
+    pass
 
 class FeatureManager:
-    def __init__(self, device):
+    def __init__(self, device, classes_number):
         # Initialize the device
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
@@ -14,9 +69,7 @@ class FeatureManager:
         self.extractor = SuperPoint(max_num_keypoints=2048).eval().to(self.device)
         self.matcher = LightGlue(features="superpoint").eval().to(self.device)
 
-        # Lists to store keypoints and descriptors for existing features
-        self.existing_keypoints = []
-        self.existing_descriptors = []
+        self.objects=PotentialObjects(classes_number)
 
     def process_new_image(self, image, rois):
         # Create an image where only the rois are visible
