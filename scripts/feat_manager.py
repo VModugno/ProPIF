@@ -40,7 +40,6 @@ class PotentialObjects:
         - one_hot_label: One-hot encoded label, e.g., [0, 1, 0]
         
         Returns:
-        - trace: The trace from the sampling
         """
         # Update the prior parameters
         self.alpha[object_id,:] += one_hot_label  # Update alpha directly here
