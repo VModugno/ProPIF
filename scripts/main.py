@@ -17,7 +17,8 @@ import torch
 import time  # Import the time module
 # local classes
 import feat_manager as fm
-import roi as roi
+from roi import Rois as roi
+from feat_manager import FeatureManager
 
 
 
@@ -95,6 +96,8 @@ class Pan3D:
         self.fast_sam_model = None
         self.LoadingYoloWorldModelWithClasses()
         self.LoadingFastSamModel()
+        
+        self.featMan=FeatureManager("cuda", len(classes))
 
     
         # Initialize Pygame for keyboard handling
@@ -197,6 +200,8 @@ class Pan3D:
             cur_result = self.fast_sam_model.predict(roi_img, retina_masks=True)
             all_masks.append(cur_result[0].masks)
         
+        self.featMan.process_new_image(image,rois)
+        
         
         end_time = time.time()
         print(f"Processing time inside post_process_image: {end_time - start_time:.2f} seconds")
@@ -236,7 +241,7 @@ class Pan3D:
             x2.append(x2_cur)
             y2.append(y2_cur)
             images.append(image[y1_cur:y2_cur, x1_cur:x2_cur])
-        rois = Rois(images, x1, y1, x2, y2)
+        rois = roi(images, x1, y1, x2, y2)
         return rois
 
     def run(self):
