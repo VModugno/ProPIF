@@ -247,6 +247,20 @@ export ROS_IP=192.168.1.27
 rosrun rosrun 3dPan main.py
 ```
 
+# troubleshoooting
+if you get this error:
+from this file mambaforge/envs/pan_seg_3d/lib/python3.9/site-packages/arviz/stats/density_utils.py
+cannot import name 'gaussian' from 'scipy.signal' (/home/robohikeuser/mambaforge/envs/pan_seg_3d/lib/python3.9/site-packages/scipy/signal/__init__.py)
+
+it is due to an incosistencies with the scipy.signal package where the gaussian has been replaced with window.gaussian
+line to add 
+from scipy import signal
+line to changes 
+from scipy.signal import convolve, convolve2d#, gaussian  # pylint: disable=no-name-in-module
+#kernel = gaussian(kernel_n, bw)
+kernel = signal.windows.gaussian(kernel_n, bw)
+
+
 
       
 
