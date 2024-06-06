@@ -292,8 +292,12 @@ class Pan3D:
 
 if __name__ == '__main__':
     try:
-        classes= ["monitor", "laptop", "keyboard", "mouse"]
-        threedPan = Pan3D(classes)
+        classes= ["flower", "leaf", "plant", "tree"]
+        # extract paht of the current video from a folder called video inside the current folder
+        # with os module 
+        video_name = "VID_20210806_104355.mp4"
+        vid_path = os.path.join(os.getcwd(), "video", video_name)
+        threedPan = Pan3D(classes, video_input=True, video_path=vid_path, start_minute=0)
         threedPan.run()
         threedPan.cleanup()
     except rospy.ROSInterruptException:
