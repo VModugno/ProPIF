@@ -56,9 +56,9 @@ class ImageData:
 #
 
 class Pan3D:
-    def __init__(self,classes,max_length=1000):
+    def __init__(self,classes,max_length=1000,video_input=False, video_path=None, start_minute=0):
         rospy.init_node('ThreeDPan', anonymous=True)
-        
+        self.video_input = video_input
         self.running = True
         # Create CvBridge to convert ROS images to OpenCV format
         self.bridge = CvBridge()
@@ -72,14 +72,32 @@ class Pan3D:
         self.depth_image_stack = []
         
         # Initialize subscribers
-        self.color_sub = message_filters.Subscriber("/camera/color/image_raw", Image)
-        self.depth_sub = message_filters.Subscriber("/camera/depth/image_rect_raw", Image)
+        if not self.video_input:
+            self.color_sub = message_filters.Subscriber("/camera/color/image_raw", Image)
+            self.depth_sub = message_filters.Subscriber("/camera/depth/image_rect_raw", Image)
+            self.ts = message_filters.TimeSynchronizer([self.color_sub, self.depth_sub], 10)
+            self.ts.registerCallback(self.image_callback)
+            # here i open the video file
+        else:
+            # Open the video file
+            self.video_path = video_path
+            self.cap = cv2.VideoCapture(video_path)
+            if not self.cap.isOpened():
+                rospy.logerr("Error opening video file.")
+                return
+            self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            self.video_length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            rospy.loginfo(f"Video file opened: {self.video_path} ({self.video_length} frames, {self.video_fps} fps)")
+            start_frame = start_minute * 60 * self.video_fps  # 60 seconds per minute
+            # Set the current frame to the frame at start_minute
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         # Initialize publisher
         self.processed_image_yolow_pub = rospy.Publisher("/processed_image_yolow", Image, queue_size=10)
         self.processed_image_fastsam_pub = rospy.Publisher("/processed_image_fastSAM", Image, queue_size=10)
         # Synchronize the subscribers by time
-        self.ts = message_filters.TimeSynchronizer([self.color_sub, self.depth_sub], 10)
-        self.ts.registerCallback(self.image_callback)
+       
 
 
         # Initialize keyboard handler thread
@@ -160,6 +178,19 @@ class Pan3D:
     def process_images(self):
         # Process images in a loop until ROS shuts down
         while not rospy.is_shutdown() and self.running:
+
+            # here i create the image from the video file 
+            if self.video_input:
+                # Read the next frame from the video file
+                ret, frame = self.cap.read()
+                if not ret:
+                    rospy.loginfo("End of video file reached.")
+                    break
+                color_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                depth_image = np.zeros_like(color_image)
+                image_data = ImageData(rgb_image=color_image, depth_image=depth_image, timestamp=time.time())
+                self.images.append(image_data)
+
             if self.images:  # Check if deque is not empty
                 # Pop the oldest image data from the deque
                 image_data = self.images.popleft()
