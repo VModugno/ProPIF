@@ -57,7 +57,7 @@ class ImageData:
 #
 
 class Pan3D:
-    def __init__(self,classes,max_length=1000,video_input=False, video_path=None, start_minute=0):
+    def __init__(self,classes,max_length=1000,video_input=False, video_path=None, start_minute=0, device="cuda"):
         rospy.init_node('ThreeDPan', anonymous=True)
         self.video_input = video_input
         self.running = True
@@ -84,7 +84,7 @@ class Pan3D:
             self.video_path = video_path
             self.cap = cv2.VideoCapture(video_path)
             if not self.cap.isOpened():
-                rospy.logerr("Error opening video file.")
+                rospy.logerr("Error opening video file. Stopping object initialization.")
                 return
             self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
             self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -112,10 +112,18 @@ class Pan3D:
         self.classes = classes
         self.yolo_model = None
         self.fast_sam_model = None
-        self.LoadingYoloWorldModelWithClasses()
-        self.LoadingFastSamModel()
+
+        # check if the device is available
+        if device not in ["cuda", "cpu"]:
+            raise ValueError("Device must be either 'cuda' or 'cpu'.")
+        if device == "cuda" and not torch.cuda.is_available():
+            raise ValueError("CUDA is not available on this machine.")
+    
+        self.device = device
+        self.LoadingYoloWorldModelWithClasses(self.device)
+        self.LoadingFastSamModel(self.device)
         
-        self.featMan=FeatureManager("cuda", len(classes))
+        self.featMan=FeatureManager(self.device, len(classes))
 
     
         # Initialize Pygame for keyboard handling
@@ -124,7 +132,7 @@ class Pan3D:
 
         #rospy.loginfo("Keyboard driver initialized. Press 'a' to start accumulating, 'z' to stop accumulating, 'd' to save data. ")
     
-    def LoadingYoloWorldModelWithClasses(self):
+    def LoadingYoloWorldModelWithClasses(self,device="cuda"):
         
 
         # Initialize a YOLO-World model
@@ -138,10 +146,14 @@ class Pan3D:
 
         # Load the model with the custom classes
         self.yolo_model = YOLO('custom_yolov8s.pt')
+        # move the model the the device
+        self.yolo_model.model.to(device)
 
-    def LoadingFastSamModel(self):
+    def LoadingFastSamModel(self,device="cuda"):
         # Create a FastSAM model
         self.fast_sam_model = FastSAM('FastSAM-s.pt')  # or FastSAM-x.pt
+        # move the model the the device
+        self.fast_sam_model.model.to(device)
 
 
 
@@ -295,8 +307,8 @@ if __name__ == '__main__':
         classes= ["flower", "leaf", "plant", "tree"]
         # extract paht of the current video from a folder called video inside the current folder
         # with os module 
-        video_name = "VID_20210806_104355.mp4"
-        vid_path = os.path.join(os.getcwd(), "video", video_name)
+        video_name = "garden_video.mp4"
+        vid_path = os.path.join(os.getcwd(),"scripts","video", video_name)
         threedPan = Pan3D(classes, video_input=True, video_path=vid_path, start_minute=0)
         threedPan.run()
         threedPan.cleanup()

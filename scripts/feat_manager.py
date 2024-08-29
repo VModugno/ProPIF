@@ -61,7 +61,7 @@ class threeDObject:
 
 class FeatureManager:
     def __init__(self, device, classes_number):
-        # Initialize the device
+        
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
         # Initialize the feature extractor and matcher

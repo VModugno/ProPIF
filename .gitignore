@@ -6,3 +6,8 @@ images/**/*.bmp
 images/**/*.tiff
 *.pt
 *.pth
+build/
+video/
+.vscode/launch.json
+scripts/__pycache__/feat_manager.cpython-39.pyc
+scripts/__pycache__/roi.cpython-39.pyc
