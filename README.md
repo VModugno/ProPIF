@@ -220,10 +220,15 @@ source ./devel/setup.bash
 ```
 
 
-In terminal A start the the camera feed
+In terminal A start the the camera feed if the realsense official ros node works you can run it by doing 
 
 ```
 roslaunch realsense2_camera rs_camera.launch depth_width:=424 depth_height:=240 depth_fps:=30 color_width:=424 color_height:=240 color_fps:=30 align_depth:=true
+```
+instead if you are using simple_realsensecamera_node [link here](https://github.com/VModugno/simple_realsensecamera_node) here to run it you can do 
+
+```
+roslaunch simple_realsense_camera_node start_camera.launch
 ```
 
 to test if everything is right in terminal B do:
