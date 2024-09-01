@@ -1,4 +1,8 @@
-#merge roi class with the mask object or at least add all the data in ROI to process the mask 
+# Description: This script contains the class Rois that is used to handle regions of interest
+#  (ROIs) in an image, including methods to map detections within the ROI back to the original
+#  full image.
+# every time we get a new image the ROIs class is fully recomputed and the masks associated 
+# to each roi are stored in the class
 import numpy as np
 class Rois:
     """
@@ -11,12 +15,15 @@ class Rois:
         y1 (int): The y-coordinate of the top-left corner of the ROI in the original image.
         x2 (int): The x-coordinate of the bottom-right corner of the ROI in the original image.
         y2 (int): The y-coordinate of the bottom-right corner of the ROI in the original image.
+        cx (int): The x-coordinate of the center of the ROI in the original image.
+        cy (int): The y-coordinate of the center of the ROI in the original image.
         masks list(): associated to each roi
+        class list(): associated to each roi
     """
     
-    def __init__(self, images:list, x1:list, y1:list, x2:list, y2:list):
+    def __init__(self, images:list, x1:list, y1:list, x2:list, y2:list, classes:list):
         """
-        Initialize the Roi object with the ROI image and its coordinates in the original image.
+        Initialize the Roi object with the all the ROI images and its coordinates in the original image.
         
         Args:
             image (numpy.ndarray): The ROI image.
@@ -25,11 +32,15 @@ class Rois:
         """
         self.images = images
         # here i want to store the masks associated to each roi 
-        self.masks = []
+        self.masks = [] # this are the mask from SAM
+        self.features = [] # this are the features from lightglue
         self.x1 = x1
         self.y1 = y1
         self.x2 = x2
         self.y2 = y2
+        self.cx = (x1 + x2) // 2
+        self.cy = (y1 + y2) // 2
+        self.classes = classes
 
     # in order to guarantee the correct mathching between rois and mask that should be called in order to associate the mask to the correct roi
     def add_mask(self, mask):
@@ -40,6 +51,15 @@ class Rois:
             mask: The mask to add to the list.
         """
         self.masks.append(mask)
+
+    def add_features(self, features):
+        """
+        Add a features to the list associated with the ROI.
+        
+        Args:
+            features: The features from lightglue to add to the list.
+        """
+        self.features.append(features)
 
 
     def apply_roi_masks_to_original(self,image):

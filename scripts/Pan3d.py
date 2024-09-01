@@ -22,6 +22,7 @@ from feat_manager import FeatureManager
 
 torch.set_grad_enabled(False)
 
+DEBUGWINDOWSVIDEO = True
 
 @dataclass
 class ImageData:
@@ -70,12 +71,15 @@ class Pan3D:
             start_frame = start_minute * 60 * self.video_fps  # 60 seconds per minute
             # Set the current frame to the frame at start_minute
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            if DEBUGWINDOWSVIDEO:
+                cv2.namedWindow("Video_sam", cv2.WINDOW_NORMAL)
+                cv2.namedWindow("Video_yolow", cv2.WINDOW_NORMAL)
+            
         # Initialize publisher
         self.processed_image_yolow_pub = rospy.Publisher("/processed_image_yolow", Image, queue_size=10)
         self.processed_image_fastsam_pub = rospy.Publisher("/processed_image_fastSAM", Image, queue_size=10)
         # Synchronize the subscribers by time
-       
-
+    
 
         # Initialize keyboard handler thread
         #self.keyboard_thread = threading.Thread(target=self.keyboard_handler)
@@ -188,6 +192,11 @@ class Pan3D:
                 image_yolow, image_fast_sam = self.post_process_image(image_data.rgb_image)
                 end_time = time.time()
                 print(f"Processing time: {end_time - start_time:.2f} seconds")
+                if  DEBUGWINDOWSVIDEO and self.video_input:
+                    cv2.imshow("Video_sam", image_fast_sam)
+                    cv2.imshow("Video_yolow", image_yolow)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
                 try:
                     ros_image_yolow = self.bridge.cv2_to_imgmsg(image_yolow, "bgr8")
                     ros_image_fast_sam = self.bridge.cv2_to_imgmsg(image_fast_sam, "bgr8")
@@ -204,20 +213,19 @@ class Pan3D:
         results=self.yolo_model.predict(image)
         image_yoloW = results[0].plot()
 
-        rois=self.extract_rois( image, results[0].boxes)
+        rois=self.extract_rois(image, results[0].boxes)
         # extract all the mask from the results
         #masks = results[0].masks
         #for mask in masks:
         # Run inference on an image
         # TODO this passage can be optimized by resizing the image to all the same size perform the inference and scale the results back to the original size
-        # optimization for later
-        
+        # optimization for later or we can parallelize with multiple sam model in GPU
         all_masks = []
         for roi_img in rois.images:
             cur_result = self.fast_sam_model.predict(roi_img, retina_masks=True)
             all_masks.append(cur_result[0].masks)
         
-        self.featMan.process_new_image(image,rois)
+        self.featMan.process_new_image(image, rois, DEBUGWINDOWSVIDEO)
         
         
         end_time = time.time()
@@ -251,14 +259,18 @@ class Pan3D:
         y1 = []
         x2 = []
         y2 = []
-        for box in boxes.xyxy.cpu().numpy():  # Convert to numpy array if not already
+        cls = []
+        bounding_boxes = boxes.xyxy.cpu().numpy()
+        class_labels = boxes.cls.cpu().numpy()
+        for box, cls_cur in zip(bounding_boxes, class_labels):  # Convert to numpy array if not already
             x1_cur, y1_cur, x2_cur, y2_cur = map(int, box)  # Ensure coordinates are integer values
             x1.append(x1_cur)
             y1.append(y1_cur)
             x2.append(x2_cur)
             y2.append(y2_cur)
             images.append(image[y1_cur:y2_cur, x1_cur:x2_cur])
-        rois = roi(images, x1, y1, x2, y2)
+            cls.append(cls_cur)
+        rois = roi(images, x1, y1, x2, y2, cls)
         return rois
 
     def run(self):

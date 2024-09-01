@@ -35,14 +35,14 @@ video_input = True
 vid_path = os.path.join(os.getcwd(),"scripts","video", video_name)
 
 # camera source
-classes= ["mointor"]
-video_input = False
+#classes= ["monitor"]
+#video_input = False
 
 if __name__ == '__main__':
     try:
         # extract paht of the current video from a folder called video inside the current folder
         # with os module 
-        threedPan = Pan3D(classes, video_input, video_path="", start_minute=0)
+        threedPan = Pan3D(classes, video_input=video_input, video_path=vid_path, start_minute=0)
         threedPan.run()
         threedPan.cleanup()
     except rospy.ROSInterruptException:
