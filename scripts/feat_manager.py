@@ -43,10 +43,10 @@ class FeatureManager:
                     # Check if the new features match any existing features
                     self.matching_existing_features(cur_potential_2dobject, rois)
                 if len(rois.images)>0:
-                    self.store_new_features(rois)
+                    self.store_new_2dobjects(rois)
                     print("New features stored from ROIs.")
             else:
-                self.store_new_features(rois)  # Store features if no existing features are present
+                self.store_new_2dobjects(rois)  # Store features if no existing features are present
                 print("Initial features from ROIs stored.")
 
     def create_masked_image(self, image, rois):
@@ -65,7 +65,48 @@ class FeatureManager:
         tensor_image = torch.tensor(image).to(self.device).permute(2, 0, 1).unsqueeze(0).float() / 255.
         return self.extractor.extract(tensor_image)
 
-
+    
+    def is_matching_existing_features(self, cur_potential_2dobject, rois):
+        # Prepare for matching
+        # create a list of index with the rois from the closest to the farthest to the current object
+        
+        distances = []
+        for idx, _ in enumerate(rois.images):
+            distance = np.linalg.norm(np.array([cur_potential_2dobject.last_roi_center_position_x, cur_potential_2dobject.last_roi_center_position_y]) - np.array([rois.cx[idx], rois.cy[idx]]))
+            distances.append((distance, idx))
+        
+        # Step 2: Sort pairs based on distance
+        distances.sort(key=lambda x: x[0])
+        
+        # Step 3: Extract sorted indices
+        sorted_indices = [idx for _, idx in distances]
+        
+        for idx in sorted_indices:
+            # Extract features from the ROI
+            cur_feats = rois.features[idx]
+            
+            # Match against each existing set of descriptors
+            matches = self.matcher({
+                "image0": {'keypoints': cur_potential_2dobject.existing_keypoints, 'descriptors': cur_potential_2dobject.existing_descriptors},
+                "image1": {'keypoints': cur_feats['keypoints'], 'descriptors': cur_feats['descriptors']}
+            })
+            matches = rbd(matches)
+            # if i have at least 50% match i consider the object to be the same
+            if matches['matches'].size(0) > 0 and matches['matches'].size(0)/cur_feats['keypoints'].size(0) > 0.5:
+                # Update the object with the new features
+                cur_potential_2dobject.update_model(cur_feats['classes'][0])
+                cur_potential_2dobject.last_roi_center_position_x = rois.cx[idx]
+                cur_potential_2dobject.last_roi_center_position_y = rois.cy[idx]
+                # remove the current roi from the list of rois
+                rois.images.pop(idx)
+                rois.features.pop(idx)
+                rois.cx.pop(idx)
+                rois.cy.pop(idx)
+                rois.classes.pop(idx)
+                break
+        
+    
+    
     #TODO to redo this functions 
     #def is_matching_existing_features(self, new_feats):
         # Prepare for matching
@@ -84,7 +125,10 @@ class FeatureManager:
 
     #    return False  # No matches found
 
-    
+     def store_new_2dobjects(self,rois):
+         for idx in enumerate(rois.images):
+             self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx])
+         
     #TODO to redo this functions 
     #def store_new_features(self, feats):
         # Store new keypoints and descriptors

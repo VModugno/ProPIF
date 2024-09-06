@@ -4,7 +4,7 @@ import numpy as np
 # potential object class that contains the keypoints and descriptors of the object
 class Potential2dObjects:
     # class_numbers is the total number of classes that im looking for in the current experiment
-    def __init__(self, total_classes, keypoints=[], descriptors=[], init_class=0, init_roi_center_position=[]):   
+    def __init__(self, total_classes, keypoints=[], descriptors=[], init_class=0, init_roi_center_position_x=0, init_roi_center_position_y=0):   
         # here i have all the list of the existing keypoints and descriptors
         self.total_classes_number = total_classes
         self.existing_keypoints = keypoints
@@ -14,9 +14,8 @@ class Potential2dObjects:
         self.alpha = np.ones(self.total_classes_number)
         self.p_label = pm.Dirichlet('class_probs', a=np.ones(self.total_classes_number)) # Uniform prior over the simplex
         # in this attribute i want to store the last roi position in which i have seen the object
-        self.last_roi_center_position = init_roi_center_position
-        # transform class in one hot encoding
-        init_class_hot_encoding = self.class_hot_encoding(init_class)
+        self.last_roi_center_position.x = init_roi_center_position_x
+        self.last_roi_center_position.y = init_roi_center_position_y
         
         self.update_model(init_class_hot_encoding)
     
@@ -25,7 +24,7 @@ class Potential2dObjects:
         cur_class_hot_encoding[cur_class_number] = 1
         return cur_class_hot_encoding
 
-    def update_model(self,one_hot_label):
+    def update_model(self,current_class_label):
         """
         Update the model with a new observation and sample from the posterior.
         
@@ -34,6 +33,7 @@ class Potential2dObjects:
         
         Returns:
         """
+        class_hot_encoding = self.class_hot_encoding(current_class_label)
         # Update the prior parameters
         self.alpha += one_hot_label  # Update alpha directly here
 
@@ -53,8 +53,8 @@ class Potential2dObjectsManager:
         self.total_classes_number = total_classes
         self.potential_objects = []
     
-    def add_potential_object(self, keypoints, descriptors, init_class, init_roi_center_position):
-        self.potential_objects.append(Potential2dObjects(self.total_classes_number, keypoints, descriptors, init_class, init_roi_center_position))
+    def add_potential_object(self, keypoints, descriptors, init_class, init_roi_center_position_x, init_roi_center_position_y):
+        self.potential_objects.append(Potential2dObjects(self.total_classes_number, keypoints, descriptors, init_class, init_roi_center_position_x,init_roi_center_position_y))
     
     def get_potential_object(self, object_id):
         return self.potential_objects[object_id]
