@@ -125,9 +125,9 @@ class FeatureManager:
 
     #    return False  # No matches found
 
-     def store_new_2dobjects(self,rois):
-         for idx in enumerate(rois.images):
-             self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx])
+    def store_new_2dobjects(self,rois):
+        for idx in enumerate(rois.images):
+            self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx])
          
     #TODO to redo this functions 
     #def store_new_features(self, feats):

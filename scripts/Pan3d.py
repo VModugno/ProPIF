@@ -61,7 +61,8 @@ class Pan3D:
             self.video_path = video_path
             self.cap = cv2.VideoCapture(video_path)
             if not self.cap.isOpened():
-                rospy.logerr("Error opening video file. Stopping object initialization.")
+                #rospy.logerr("Error opening video file. Stopping object initialization.")
+                raise ValueError("Error opening video file. Stopping object initialization.")
                 return
             self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
             self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
