@@ -174,6 +174,17 @@ to download and install lightglue ensure that the terminal env is pan_seg_3d (in
 git clone https://github.com/cvg/LightGlue.git && cd LightGlue
 python -m pip install -e .
 ```
+
+also you need to add clip from openAI
+```
+pip install git+https://github.com/openai/CLIP.git
+```
+
+due to an issue with arviz it is asdvisabile to downgrade scipy to 1.12.0
+ ```
+mamba install scipy=1.12.0
+```
+
 then the packaged need to be compiled
 ```
 cd to/ros/workspace
