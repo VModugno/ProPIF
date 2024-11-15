@@ -1,9 +1,3 @@
-
-
-
-
-
-
 # define the algorithm:
 
 # 1. zero 3d points no images
