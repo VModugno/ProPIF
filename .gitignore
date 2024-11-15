@@ -15,3 +15,5 @@ scripts/__pycache__/feat_manager.cpython-39.pyc
 scripts/__pycache__/roi.cpython-39.pyc
 scripts/__pycache__/Pan3d.cpython-39.pyc
 scripts/__pycache__/twoDthreeDObjects.cpython-39.pyc
+
+.vscode/
