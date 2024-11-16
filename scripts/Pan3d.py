@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from collections import deque
 from ultralytics import YOLO
 from ultralytics import FastSAM
-from ultralytics.models.fastsam import FastSAMPrompt
 import torch
 import time  # Import the time module
 # local classes
