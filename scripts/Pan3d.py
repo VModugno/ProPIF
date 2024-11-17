@@ -29,12 +29,9 @@ class ImageData:
     depth_image: np.ndarray
     timestamp: float  # Assuming timestamp is required
 
-
-
-
 class Pan3D:
-    def __init__(self,classes,max_length=1000,video_input=False, video_path=None, start_minute=0, device="cuda"):
-        rospy.init_node('ThreeDPan', anonymous=True)
+    def __init__(self,classes,max_length=1000,video_input=False, video_path=None, start_minute=10, device="cuda"):
+        # rospy.init_node('ThreeDPan', anonymous=True)
         self.video_input = video_input
         self.running = True
         # Create CvBridge to convert ROS images to OpenCV format
@@ -66,17 +63,14 @@ class Pan3D:
             self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             self.video_length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            rospy.loginfo(f"Video file opened: {self.video_path} ({self.video_length} frames, {self.video_fps} fps)")
+            # rospy.loginfo(f"Video file opened: {self.video_path} ({self.video_length} frames, {self.video_fps} fps)")
             start_frame = start_minute * 60 * self.video_fps  # 60 seconds per minute
             # Set the current frame to the frame at start_minute
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-            if DEBUGWINDOWSVIDEO:
-                cv2.namedWindow("Video_sam", cv2.WINDOW_NORMAL)
-                cv2.namedWindow("Video_yolow", cv2.WINDOW_NORMAL)
             
         # Initialize publisher
-        self.processed_image_yolow_pub = rospy.Publisher("/processed_image_yolow", Image, queue_size=10)
-        self.processed_image_fastsam_pub = rospy.Publisher("/processed_image_fastSAM", Image, queue_size=10)
+        # self.processed_image_yolow_pub = rospy.Publisher("/processed_image_yolow", Image, queue_size=10)
+        # self.processed_image_fastsam_pub = rospy.Publisher("/processed_image_fastSAM", Image, queue_size=10)
         # Synchronize the subscribers by time
     
 
@@ -140,10 +134,11 @@ class Pan3D:
             depth_image = self.bridge.imgmsg_to_cv2(depth_msg, "passthrough")
 
             # Processing of synchronized images here
-            image_data = ImageData(rgb_image=color_image, depth_image=depth_image, timestamp=rospy.Time.now().to_sec())
+            image_data = ImageData(rgb_image=color_image, depth_image=depth_image, timestamp=time.time())
             self.images.append(image_data)
         except Exception as e:
-            rospy.logerr(f"Error processing images: {e}")
+            print(f"Error processing images: {e}")
+            # rospy.logerr(f"Error processing images: {e}")
     '''
     def keyboard_handler(self):
         running = True
@@ -169,19 +164,23 @@ class Pan3D:
     '''
     def process_images(self):
         # Process images in a loop until ROS shuts down
-        while not rospy.is_shutdown() and self.running:
+        while self.running:
 
             # here i create the image from the video file 
             if self.video_input:
                 # Read the next frame from the video file
                 ret, frame = self.cap.read()
                 if not ret:
-                    rospy.loginfo("End of video file reached.")
+                    # rospy.loginfo("End of video file reached.")
+                    print("End of video file reached.")
                     break
                 color_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 depth_image = np.zeros_like(color_image)
                 image_data = ImageData(rgb_image=color_image, depth_image=depth_image, timestamp=time.time())
+                cv2.imshow("Video", frame)
                 self.images.append(image_data)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
 
             if self.images:  # Check if deque is not empty
                 # Pop the oldest image data from the deque
@@ -189,11 +188,15 @@ class Pan3D:
 
                 start_time = time.time()
                 image_yolow, image_fast_sam = self.post_process_image(image_data.rgb_image)
+                image_yolow_rgb = cv2.cvtColor(image_yolow, cv2.COLOR_BGR2RGB)
+                image_fast_sam_rgb = cv2.cvtColor(image_fast_sam, cv2.COLOR_BGR2RGB)
+                # cv2.imshow("Video_sam", image_fast_sam_rgb)
+                # cv2.imshow("Video_yolow", image_yolow_rgb)
                 end_time = time.time()
                 print(f"Processing time: {end_time - start_time:.2f} seconds")
                 if  DEBUGWINDOWSVIDEO and self.video_input:
-                    cv2.imshow("Video_sam", image_fast_sam)
-                    cv2.imshow("Video_yolow", image_yolow)
+                    cv2.imshow("Video_sam", image_fast_sam_rgb)
+                    cv2.imshow("Video_yolow", image_yolow_rgb)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                 try:
@@ -202,20 +205,25 @@ class Pan3D:
                     self.processed_image_yolow_pub.publish(ros_image_yolow)
                     self.processed_image_fastsam_pub.publish(ros_image_fast_sam)
                 except Exception as e:
-                    rospy.logerr("Failed to convert or publish image: %s", e)
+                    # rospy.logerr("Failed to convert or publish image: %s", e)
+                    print("Failed to convert or publish image: %s", e)
 
     def post_process_image(self, image):
         # Example image processing; for now, just return the same image
         # Add actual image processing logic here
         # Show results
         start_time = time.time()
-        results=self.yolo_model.predict(image)
-        image_yoloW = results[0].plot()
+        results = self.yolo_model.predict(image, conf=0.05, iou=0.4, max_det=50)
 
-        rois=self.extract_rois(image, results[0].boxes)
+        # Plot all YOLO results on the original image
+        image_yoloW = image.copy()
+        for result in results:
+            image_yoloW = result.plot()
+
+        rois = self.extract_rois(image, results[0].boxes)
         # extract all the mask from the results
-        #masks = results[0].masks
-        #for mask in masks:
+        # masks = results[0].masks
+        # for mask in masks:
         # Run inference on an image
         # TODO this passage can be optimized by resizing the image to all the same size perform the inference and scale the results back to the original size
         # optimization for later or we can parallelize with multiple sam model in GPU
@@ -232,10 +240,10 @@ class Pan3D:
         # extract mask from results_fs
         
         # Prepare a Prompt Process object
-        #everything_results = self.fast_sam_model(image, retina_masks=True, imgsz=1024, conf=0.4, iou=0.9)
-        #prompt_process = FastSAMPrompt(image, everything_results, device='gpu')
+        # everything_results = self.fast_sam_model(image, retina_masks=True, imgsz=1024, conf=0.4, iou=0.9)
+        # prompt_process = FastSAMPrompt(image, everything_results, device='gpu')
         # Bbox default shape [0,0,0,0] -> [x1,y1,x2,y2]
-        #ann = prompt_process.box_prompt(bbox=mask)
+        # ann = prompt_process.box_prompt(bbox=mask)
                   
         image_fastSAM = results[0].plot()
          
@@ -270,6 +278,7 @@ class Pan3D:
             images.append(image[y1_cur:y2_cur, x1_cur:x2_cur])
             cls.append(cls_cur)
         rois = roi(images, x1, y1, x2, y2, cls)
+        print(f"Extracted {len(rois.images)} ROIs.")
         return rois
 
     def run(self):
@@ -277,7 +286,7 @@ class Pan3D:
         #self.keyboard_thread.start()
 
         # Use rospy.spin() to keep your node alive and handle callbacks
-        rospy.spin()
+        # rospy.spin()
         #pygame.quit()
         #self.keyboard_thread.join()
         self.processing_thread.join()

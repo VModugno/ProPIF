@@ -3,6 +3,7 @@ from lightglue import LightGlue, SuperPoint, DISK
 from lightglue.utils import load_image, rbd
 from lightglue import viz2d
 import numpy as np
+import cv2
 from twoDthreeDObjects import Potential2dObjectsManager, Potential2dObjects
 
 
@@ -16,7 +17,7 @@ class FeatureManager:
         self.matcher = LightGlue(features="superpoint").eval().to(self.device)
        
 
-        self.objects2dMan=Potential2dObjectsManager()
+        self.objects2dMan=Potential2dObjectsManager(classes_number)
 
     def process_new_image(self, image, rois, DEBUGWINDOWVIDEO):
         # Create an image where only the rois are visible
@@ -25,12 +26,18 @@ class FeatureManager:
             
         else:
             # TODO rather than doing this we process the image one by one and we add the features to the each ROI
-            #rois_image = self.create_masked_image(image, rois)
+            rois_image = self.create_masked_image(image, rois)
+            rois_image_rgb = cv2.cvtColor(rois_image, cv2.COLOR_BGR2RGB)
+            cv2.imshow("rois_image", rois_image_rgb)
             # Extract features from the masked image
             #feats = self.extract_features(rois_image)
             for idx, roi_image in enumerate(rois.images):
-                rois.add_features(self.extractor.extract(torch.tensor(roi_image).to(self.device)))
+                roi_image_gray = cv2.cvtColor(roi_image, cv2.COLOR_BGR2GRAY)
+                img_tensor = torch.tensor(roi_image_gray).float().div(255).unsqueeze(0).unsqueeze(0).to(self.device)
+                features = self.extractor.extract(img_tensor)
+                rois.add_features(features)
 
+            #! Debug frame by frame
             if DEBUGWINDOWVIDEO:
                 for idx, roi_image in enumerate(rois.images):
                     viz2d.plot_images([roi_image])
@@ -41,7 +48,7 @@ class FeatureManager:
             if len(self.objects2dMan.get_potential_objects())>0:  # Only compare if there are existing features
                 for idx, cur_potential_2dobject in enumerate(self.objects2dMan.get_potential_objects()):
                     # Check if the new features match any existing features
-                    self.matching_existing_features(cur_potential_2dobject, rois)
+                    self.is_matching_existing_features(cur_potential_2dobject, rois)
                 if len(rois.images)>0:
                     self.store_new_2dobjects(rois)
                     print("New features stored from ROIs.")
@@ -72,7 +79,7 @@ class FeatureManager:
         
         distances = []
         for idx, _ in enumerate(rois.images):
-            distance = np.linalg.norm(np.array([cur_potential_2dobject.last_roi_center_position_x, cur_potential_2dobject.last_roi_center_position_y]) - np.array([rois.cx[idx], rois.cy[idx]]))
+            distance = np.linalg.norm(np.array([cur_potential_2dobject.last_roi_center_position['x'], cur_potential_2dobject.last_roi_center_position['y']]) - np.array([rois.cx[idx], rois.cy[idx]]))
             distances.append((distance, idx))
         
         # Step 2: Sort pairs based on distance
@@ -84,6 +91,7 @@ class FeatureManager:
         for idx in sorted_indices:
             # Extract features from the ROI
             cur_feats = rois.features[idx]
+            classes = rois.classes[idx]
             
             # Match against each existing set of descriptors
             matches = self.matcher({
@@ -94,7 +102,7 @@ class FeatureManager:
             # if i have at least 50% match i consider the object to be the same
             if matches['matches'].size(0) > 0 and matches['matches'].size(0)/cur_feats['keypoints'].size(0) > 0.5:
                 # Update the object with the new features
-                cur_potential_2dobject.update_model(cur_feats['classes'][0])
+                cur_potential_2dobject.update_model(classes)
                 cur_potential_2dobject.last_roi_center_position_x = rois.cx[idx]
                 cur_potential_2dobject.last_roi_center_position_y = rois.cy[idx]
                 # remove the current roi from the list of rois
@@ -126,7 +134,7 @@ class FeatureManager:
     #    return False  # No matches found
 
     def store_new_2dobjects(self,rois):
-        for idx in enumerate(rois.images):
+        for idx, _ in enumerate(rois.images):
             self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx])
          
     #TODO to redo this functions 

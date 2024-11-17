@@ -12,34 +12,28 @@ class Potential2dObjects:
         #self.alpha = np.ones(classes_number)
         #self.p_label = pm.Dirichlet('class_probs', a=np.ones(classes_number))  # Uniform prior over the simplex
         self.alpha = np.ones(self.total_classes_number)
-        self.p_label = pm.Dirichlet('class_probs', a=np.ones(self.total_classes_number)) # Uniform prior over the simplex
+        class_hot_encoding = self.class_hot_encoding(int(init_class))
+        self.alpha += class_hot_encoding
+        # with pm.Model() as model:
+        self.p_label = pm.Dirichlet.dist(a=np.ones(self.total_classes_number), shape=self.total_classes_number)
+        # self.model = model
         # in this attribute i want to store the last roi position in which i have seen the object
-        self.last_roi_center_position.x = init_roi_center_position_x
-        self.last_roi_center_position.y = init_roi_center_position_y
-        
-        self.update_model(init_class_hot_encoding)
+        self.last_roi_center_position = {
+            'x': init_roi_center_position_x,
+            'y': init_roi_center_position_y
+        }
     
     def class_hot_encoding(self,cur_class_number):
         cur_class_hot_encoding = np.zeros(self.total_classes_number)
         cur_class_hot_encoding[cur_class_number] = 1
         return cur_class_hot_encoding
 
-    def update_model(self,current_class_label):
-        """
-        Update the model with a new observation and sample from the posterior.
-        
-        Parameters:
-        - one_hot_label: One-hot encoded label, e.g., [0, 1, 0]
-        
-        Returns:
-        """
-        class_hot_encoding = self.class_hot_encoding(current_class_label)
-        # Update the prior parameters
-        self.alpha += one_hot_label  # Update alpha directly here
+    # update the model with new class information
+    def update_model(self, new_class):
+        class_hot_encoding = self.class_hot_encoding(int(new_class))
+        self.alpha += class_hot_encoding
+        self.p_label = pm.Dirichlet.dist(a=self.alpha, shape=self.total_classes_number)
 
-        # Reset model's parameter 'a' with updated alpha
-        self.p_label['class_probs'].distribution.a.set_value(self.alpha)
-    
     # this provide the probability of the to be in certain class
     def evaluate_model(self,object_id):
          # Sampling using NUTS via JAX with numpyro backend
@@ -52,9 +46,18 @@ class Potential2dObjectsManager:
     def __init__(self, total_classes):
         self.total_classes_number = total_classes
         self.potential_objects = []
+        self.model = pm.Model()
     
     def add_potential_object(self, keypoints, descriptors, init_class, init_roi_center_position_x, init_roi_center_position_y):
-        self.potential_objects.append(Potential2dObjects(self.total_classes_number, keypoints, descriptors, init_class, init_roi_center_position_x,init_roi_center_position_y))
+        potential_object = Potential2dObjects(
+            self.total_classes_number,
+            keypoints,
+            descriptors,
+            init_class,
+            init_roi_center_position_x,
+            init_roi_center_position_y
+        )
+        self.potential_objects.append(potential_object)
     
     def get_potential_object(self, object_id):
         return self.potential_objects[object_id]

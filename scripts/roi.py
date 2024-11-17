@@ -38,8 +38,8 @@ class Rois:
         self.y1 = y1
         self.x2 = x2
         self.y2 = y2
-        self.cx = (x1 + x2) // 2
-        self.cy = (y1 + y2) // 2
+        self.cx = [(x1_i + x2_i) // 2 for x1_i, x2_i in zip(x1, x2)]
+        self.cy = [(y1_i + y2_i) // 2 for y1_i, y2_i in zip(y1, y2)]
         self.classes = classes
 
     # in order to guarantee the correct mathching between rois and mask that should be called in order to associate the mask to the correct roi
