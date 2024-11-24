@@ -21,7 +21,7 @@ from feat_manager import FeatureManager
 
 torch.set_grad_enabled(False)
 
-DEBUGWINDOWSVIDEO = True
+DEBUGWINDOWSVIDEO = False
 
 @dataclass
 class ImageData:
@@ -194,7 +194,7 @@ class Pan3D:
                 # cv2.imshow("Video_yolow", image_yolow_rgb)
                 end_time = time.time()
                 print(f"Processing time: {end_time - start_time:.2f} seconds")
-                if  DEBUGWINDOWSVIDEO and self.video_input:
+                if self.video_input:
                     cv2.imshow("Video_sam", image_fast_sam_rgb)
                     cv2.imshow("Video_yolow", image_yolow_rgb)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -217,23 +217,30 @@ class Pan3D:
 
         # Plot all YOLO results on the original image
         image_yoloW = image.copy()
+        image_fastSAM = image.copy()
+
         for result in results:
             image_yoloW = result.plot()
 
-        rois = self.extract_rois(image, results[0].boxes)
-        # extract all the mask from the results
-        # masks = results[0].masks
-        # for mask in masks:
-        # Run inference on an image
-        # TODO this passage can be optimized by resizing the image to all the same size perform the inference and scale the results back to the original size
-        # optimization for later or we can parallelize with multiple sam model in GPU
-        all_masks = []
-        for roi_img in rois.images:
-            cur_result = self.fast_sam_model.predict(roi_img, retina_masks=True)
-            all_masks.append(cur_result[0].masks)
-        
-        self.featMan.process_new_image(image, rois, DEBUGWINDOWSVIDEO)
-        
+            rois = self.extract_rois(image, result.boxes)
+            if len(rois.images) > 0:
+                for index, roi_img in enumerate(rois.images):
+                    print(f"Processing ROI image of size {roi_img.shape}")
+                    cur_results = self.fast_sam_model(roi_img, retina_masks=True)
+                    for cur_result in cur_results:
+                        if cur_result.masks is not None and len(cur_result.masks.data) > 0:
+                            print(f"Detected {len(cur_result.masks)} masks.")
+                            print(f"masks: {cur_result.masks.data.shape}")
+                            for mask_tensor in cur_result.masks.data:
+                                mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
+                                rois.add_mask(index, mask_array)
+                        else:
+                            print("Allert: No mask detected.")
+                            h_roi, w_roi = roi_img.shape[:2]
+                            empty_mask = np.zeros((h_roi, w_roi), dtype=np.uint8)
+                            rois.add_mask(index, empty_mask)
+                image_fastSAM = rois.apply_roi_masks_to_original(image.copy())
+            
         
         end_time = time.time()
         print(f"Processing time inside post_process_image: {end_time - start_time:.2f} seconds")
@@ -244,8 +251,9 @@ class Pan3D:
         # prompt_process = FastSAMPrompt(image, everything_results, device='gpu')
         # Bbox default shape [0,0,0,0] -> [x1,y1,x2,y2]
         # ann = prompt_process.box_prompt(bbox=mask)
-                  
-        image_fastSAM = results[0].plot()
+        # image_fastSAM = self.fast_sam_model(image, retina_masks=True)
+        # for result in image_fastSAM:
+        #     image_fastSAM = result.plot()
          
         return image_yoloW, image_fastSAM
     
@@ -267,8 +275,8 @@ class Pan3D:
         x2 = []
         y2 = []
         cls = []
-        bounding_boxes = boxes.xyxy.cpu().numpy()
-        class_labels = boxes.cls.cpu().numpy()
+        bounding_boxes = boxes.xyxy
+        class_labels = boxes.cls
         for box, cls_cur in zip(bounding_boxes, class_labels):  # Convert to numpy array if not already
             x1_cur, y1_cur, x2_cur, y2_cur = map(int, box)  # Ensure coordinates are integer values
             x1.append(x1_cur)
