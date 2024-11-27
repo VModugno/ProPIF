@@ -80,8 +80,8 @@ class Rois:
             print("Applying mask to ROI", index)
             x1_i, y1_i = self.x1[index], self.y1[index]
             x2_i, y2_i = self.x2[index], self.y2[index]
-
-            full_mask[y1_i:y2_i, x1_i:x2_i] = mask_array
+            roi_area = full_mask[y1_i:y2_i, x1_i:x2_i]
+            full_mask[y1_i:y2_i, x1_i:x2_i] = np.logical_or(roi_area, mask_array).astype(np.uint8)
         masked_image = image.copy()
         masked_image[full_mask > 0] = (255, 0, 0)
 
