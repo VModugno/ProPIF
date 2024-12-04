@@ -28,7 +28,8 @@ class FeatureManager:
             # TODO rather than doing this we process the image one by one and we add the features to the each ROI
             rois_image = self.create_masked_image(image, rois)
             rois_image_rgb = cv2.cvtColor(rois_image, cv2.COLOR_BGR2RGB)
-            cv2.imshow("rois_image", rois_image_rgb)
+            rois_image_with_keypoints = rois_image_rgb.copy()
+            # cv2.imshow("rois_image", rois_image_rgb)
             # Extract features from the masked image
             #feats = self.extract_features(rois_image)
             for idx, roi_image in enumerate(rois.images):
@@ -36,6 +37,26 @@ class FeatureManager:
                 img_tensor = torch.tensor(roi_image_gray).float().div(255).unsqueeze(0).unsqueeze(0).to(self.device)
                 features = self.extractor.extract(img_tensor)
                 rois.add_features(features)
+                
+                # 获取 ROI 在 rois_image_rgb 中的左上角坐标
+                x1, y1 = rois.x1[idx], rois.y1[idx]
+                
+                # 将关键点转换为 NumPy 数组
+                keypoints_np = features['keypoints'][0].cpu().numpy()
+                
+                # 将关键点坐标调整到 rois_image_rgb 的坐标系
+                keypoints_np[:, 0] += x1
+                keypoints_np[:, 1] += y1
+
+                # 将调整后的关键点转换为 OpenCV 的 KeyPoint 对象
+                keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np]
+
+                # 在 rois_image_with_keypoints 上绘制关键点
+                rois_image_with_keypoints = cv2.drawKeypoints(rois_image_with_keypoints, keypoints_cv, None, color=(0, 255, 0))
+
+            # 显示带有关键点的图像
+            cv2.imshow("rois_image_with_keypoints", rois_image_with_keypoints)
+            cv2.waitKey(1)
 
             #! Debug frame by frame
             if DEBUGWINDOWVIDEO:

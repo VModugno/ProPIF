@@ -108,22 +108,22 @@ class Pan3D:
         
 
         # Initialize a YOLO-World model
-        model = YOLO('yolov8l-world.pt')  # or select yolov8m/l-world.pt
+        model = YOLO('yolov8m-worldv2.pt')  # or select yolov8m/l-world.pt
 
         # Define custom classes
         model.set_classes(self.classes)
 
         # Save the model with the defined offline vocabulary
-        model.save("custom_yolov8l.pt")
+        model.save("custom_yolov8m.pt")
 
         # Load the model with the custom classes
-        self.yolo_model = YOLO('custom_yolov8l.pt')
+        self.yolo_model = YOLO('custom_yolov8m.pt')
         # move the model the the device
         self.yolo_model.model.to(device)
 
     def LoadingFastSamModel(self,device="cuda"):
         # Create a FastSAM model
-        self.fast_sam_model = FastSAM('FastSAM-x.pt')  # or FastSAM-x.pt
+        self.fast_sam_model = FastSAM('FastSAM-s.pt')  # or FastSAM-x.pt
         # move the model the the device
         self.fast_sam_model.model.to(device)
 
@@ -213,7 +213,7 @@ class Pan3D:
         # Add actual image processing logic here
         # Show results
         start_time = time.time()
-        results = self.yolo_model.predict(image, conf=0.03, iou=0.6)
+        results = self.yolo_model.predict(image, conf=0.2, iou=0.4)
 
         # Plot all YOLO results on the original image
         image_yoloW = image.copy()
@@ -226,7 +226,7 @@ class Pan3D:
             if len(rois.images) > 0:
                 for index, roi_img in enumerate(rois.images):
                     print(f"Processing ROI image of size {roi_img.shape}")
-                    cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.3, iou=0.5)
+                    cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.5, iou=0.5)
                     for cur_result in cur_results:
                         if cur_result.masks is not None and len(cur_result.masks.data) > 0:
                             print(f"Detected {len(cur_result.masks)} masks.")
