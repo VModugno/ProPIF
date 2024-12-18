@@ -22,6 +22,7 @@ class Potential2dObjects:
             'x': init_roi_center_position_x,
             'y': init_roi_center_position_y
         }
+        self.is_filtered = False
     
     def class_hot_encoding(self,cur_class_number):
         cur_class_hot_encoding = np.zeros(self.total_classes_number)
@@ -40,6 +41,36 @@ class Potential2dObjects:
         trace = pm.sampling_jax.sample_numpyro_nuts(model=self.p_label[object_id], draws=500, tune=200, target_accept=0.9, random_seed=42)
     
         return trace
+    
+    def filter_SAM(self, mask):
+        """
+        Filters the existing keypoints and descriptors, keeping only those inside the mask.
+
+        Args:
+            mask (np.ndarray): A binary mask (2D numpy array) where 1 indicates the object region.
+
+        Returns:
+            None: Updates the existing_keypoints and existing_descriptors in place.
+        """
+        if self.is_filtered:
+            print("Object has already been filtered. Skipping.")
+            return
+
+        filtered_keypoints = []
+        filtered_descriptors = []
+
+        for kp, desc in zip(self.existing_keypoints, self.existing_descriptors):
+            kp_x, kp_y = int(kp[0]), int(kp[1])  # Keypoint coordinates
+            if mask[kp_y, kp_x] == 1:  # Check if the keypoint is inside the mask
+                filtered_keypoints.append(kp)
+                filtered_descriptors.append(desc)
+
+        self.existing_keypoints = filtered_keypoints
+        self.existing_descriptors = filtered_descriptors
+
+        # Set the filtered flag to True
+        self.is_filtered = True
+        print("Object has been filtered using SAM mask. Keypoints updated.")
 
 
 class Potential2dObjectsManager:

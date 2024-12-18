@@ -6,7 +6,6 @@ import numpy as np
 import cv2
 from twoDthreeDObjects import Potential2dObjectsManager, Potential2dObjects
 
-
 class FeatureManager:
     def __init__(self, device, classes_number):
         
@@ -38,23 +37,19 @@ class FeatureManager:
                 features = self.extractor.extract(img_tensor)
                 rois.add_features(features)
                 
-                # 获取 ROI 在 rois_image_rgb 中的左上角坐标
+                # Get ROI position
                 x1, y1 = rois.x1[idx], rois.y1[idx]
-                
-                # 将关键点转换为 NumPy 数组
                 keypoints_np = features['keypoints'][0].cpu().numpy()
                 
-                # 将关键点坐标调整到 rois_image_rgb 的坐标系
+                # get the postion of keypoints in the original image
                 keypoints_np[:, 0] += x1
                 keypoints_np[:, 1] += y1
 
-                # 将调整后的关键点转换为 OpenCV 的 KeyPoint 对象
                 keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np]
 
-                # 在 rois_image_with_keypoints 上绘制关键点
+                # plot keypoints
                 rois_image_with_keypoints = cv2.drawKeypoints(rois_image_with_keypoints, keypoints_cv, None, color=(0, 255, 0))
 
-            # 显示带有关键点的图像
             cv2.imshow("rois_image_with_keypoints", rois_image_with_keypoints)
             cv2.waitKey(1)
 
@@ -123,10 +118,11 @@ class FeatureManager:
             # if i have at least 50% match i consider the object to be the same
             if matches['matches'].size(0) > 0 and matches['matches'].size(0)/cur_feats['keypoints'].size(0) > 0.5:
                 # Update the object with the new features
+                # if cur_potential_2dobject.is_filled:
                 cur_potential_2dobject.update_model(classes)
                 cur_potential_2dobject.last_roi_center_position_x = rois.cx[idx]
                 cur_potential_2dobject.last_roi_center_position_y = rois.cy[idx]
-                # remove the current roi from the list of rois
+                #! remove the current roi from the list of rois
                 rois.images.pop(idx)
                 rois.features.pop(idx)
                 rois.cx.pop(idx)

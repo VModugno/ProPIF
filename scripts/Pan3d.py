@@ -187,23 +187,23 @@ class Pan3D:
                 image_data = self.images.popleft()
 
                 start_time = time.time()
-                image_yolow, image_fast_sam = self.post_process_image(image_data.rgb_image)
+                image_yolow = self.post_process_image(image_data.rgb_image)
                 image_yolow_rgb = cv2.cvtColor(image_yolow, cv2.COLOR_BGR2RGB)
-                image_fast_sam_rgb = cv2.cvtColor(image_fast_sam, cv2.COLOR_BGR2RGB)
+                # image_fast_sam_rgb = cv2.cvtColor(image_fast_sam, cv2.COLOR_BGR2RGB)
                 # cv2.imshow("Video_sam", image_fast_sam_rgb)
                 # cv2.imshow("Video_yolow", image_yolow_rgb)
                 end_time = time.time()
                 print(f"Processing time: {end_time - start_time:.2f} seconds")
                 if self.video_input:
-                    cv2.imshow("Video_sam", image_fast_sam_rgb)
+                    # cv2.imshow("Video_sam", image_fast_sam_rgb)
                     cv2.imshow("Video_yolow", image_yolow_rgb)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                 try:
                     ros_image_yolow = self.bridge.cv2_to_imgmsg(image_yolow, "bgr8")
-                    ros_image_fast_sam = self.bridge.cv2_to_imgmsg(image_fast_sam, "bgr8")
+                    # ros_image_fast_sam = self.bridge.cv2_to_imgmsg(image_fast_sam, "bgr8")
                     self.processed_image_yolow_pub.publish(ros_image_yolow)
-                    self.processed_image_fastsam_pub.publish(ros_image_fast_sam)
+                    # self.processed_image_fastsam_pub.publish(ros_image_fast_sam)
                 except Exception as e:
                     # rospy.logerr("Failed to convert or publish image: %s", e)
                     print("Failed to convert or publish image: %s", e)
@@ -243,16 +243,7 @@ class Pan3D:
         self.featMan.process_new_image(image, rois, DEBUGWINDOWSVIDEO)
         end_time = time.time()
         print(f"Processing time inside post_process_image: {end_time - start_time:.2f} seconds")
-        # extract mask from results_fs
-        
-        # Prepare a Prompt Process object
-        # everything_results = self.fast_sam_model(image, retina_masks=True, imgsz=1024, conf=0.4, iou=0.9)
-        # prompt_process = FastSAMPrompt(image, everything_results, device='gpu')
-        # Bbox default shape [0,0,0,0] -> [x1,y1,x2,y2]
-        # ann = prompt_process.box_prompt(bbox=mask)
-        # image_fastSAM = self.fast_sam_model(image, retina_masks=True)
-        # for result in image_fastSAM:
-        #     image_fastSAM = result.plot()
+
         return image_yoloW, image_fastSAM
     
     # TODO this function can be operate in gpu
