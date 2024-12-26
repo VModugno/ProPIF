@@ -1,5 +1,7 @@
 import pymc as pm
 import numpy as np
+import torch
+import cv2, time
 
 # potential object class that contains the keypoints and descriptors of the object
 class Potential2dObjects:
@@ -23,6 +25,7 @@ class Potential2dObjects:
             'y': init_roi_center_position_y
         }
         self.is_filtered = False
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     def class_hot_encoding(self,cur_class_number):
         cur_class_hot_encoding = np.zeros(self.total_classes_number)
@@ -30,47 +33,71 @@ class Potential2dObjects:
         return cur_class_hot_encoding
 
     # update the model with new class information
-    def update_model(self, new_class):
+    def update_model(self, new_class, keypoints, descriptors):
+        if self.is_filtered:
+            print("Object has been filtered. Skipping update.")
+            return
         class_hot_encoding = self.class_hot_encoding(int(new_class))
         self.alpha += class_hot_encoding
         self.p_label = pm.Dirichlet.dist(a=self.alpha, shape=self.total_classes_number)
+        # Use new keypoints and descriptors
+        self.existing_keypoints = keypoints
+        # Use new descriptors
+        self.existing_descriptors = descriptors
 
     # this provide the probability of the to be in certain class
-    def evaluate_model(self,object_id):
-         # Sampling using NUTS via JAX with numpyro backend
-        trace = pm.sampling_jax.sample_numpyro_nuts(model=self.p_label[object_id], draws=500, tune=200, target_accept=0.9, random_seed=42)
-    
-        return trace
+    def evaluate_model(self):
+        alpha_sum = np.sum(self.alpha)
+        expected_probs = self.alpha / alpha_sum
+        max_prob = np.max(expected_probs)
+        return max_prob > 0.8
+
     
     def filter_SAM(self, mask):
-        """
-        Filters the existing keypoints and descriptors, keeping only those inside the mask.
-
-        Args:
-            mask (np.ndarray): A binary mask (2D numpy array) where 1 indicates the object region.
-
-        Returns:
-            None: Updates the existing_keypoints and existing_descriptors in place.
-        """
         if self.is_filtered:
             print("Object has already been filtered. Skipping.")
             return
 
+        #! debug
+        cv2.imshow('mask', mask*255)
+        cv2.waitKey(1)
+        # keypoints shape: (1, N, 2)
+        keypoints_np = self.existing_keypoints.cpu().numpy()  # shape: (1, N, 2)
+        keypoints_np = keypoints_np[0]  # shape: (N, 2)
+
+        # descriptors shape: (1, N, D)
+        descriptors_np = self.existing_descriptors.cpu().numpy()  # shape: (1, N, D)
+        descriptors_np = descriptors_np[0]  # shape: (N, D)
+
         filtered_keypoints = []
         filtered_descriptors = []
 
-        for kp, desc in zip(self.existing_keypoints, self.existing_descriptors):
-            kp_x, kp_y = int(kp[0]), int(kp[1])  # Keypoint coordinates
-            if mask[kp_y, kp_x] == 1:  # Check if the keypoint is inside the mask
-                filtered_keypoints.append(kp)
-                filtered_descriptors.append(desc)
+        for kp, desc in zip(keypoints_np, descriptors_np):
+            kp_x, kp_y = kp[0], kp[1]
+            kp_x_int, kp_y_int = int(kp_x), int(kp_y)
+            
+            if 0 <= kp_y_int < mask.shape[0] and 0 <= kp_x_int < mask.shape[1]:
+                if mask[kp_y_int, kp_x_int] > 0:
+                    filtered_keypoints.append([kp_x, kp_y])
+                    filtered_descriptors.append(desc)
 
-        self.existing_keypoints = filtered_keypoints
-        self.existing_descriptors = filtered_descriptors
+        # Transfer filtered keypoints and descriptors back to the device
+        if len(filtered_keypoints) > 0:
+            filtered_keypoints_array = np.array(filtered_keypoints, dtype=np.float32)  # (M, 2)
+            filtered_keypoints_tensor = torch.from_numpy(filtered_keypoints_array).unsqueeze(0)  # (1, M, 2)
 
-        # Set the filtered flag to True
-        self.is_filtered = True
-        print("Object has been filtered using SAM mask. Keypoints updated.")
+            filtered_descriptors_array = np.array(filtered_descriptors, dtype=np.float32)  # (M, D)
+            filtered_descriptors_tensor = torch.from_numpy(filtered_descriptors_array).unsqueeze(0)  # (1, M, D)
+
+            filtered_keypoints_tensor = filtered_keypoints_tensor.to(self.device)
+            filtered_descriptors_tensor = filtered_descriptors_tensor.to(self.device)
+
+            self.existing_keypoints = filtered_keypoints_tensor
+            self.existing_descriptors = filtered_descriptors_tensor
+            self.is_filtered = True
+            print("Object has been filtered using SAM mask. Keypoints updated.")
+        else:
+            print("No keypoints left after filtering!")
 
 
 class Potential2dObjectsManager:

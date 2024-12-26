@@ -4,6 +4,7 @@
 # every time we get a new image the ROIs class is fully recomputed and the masks associated 
 # to each roi are stored in the class
 import numpy as np
+
 class Rois:
     """
     A class to handle regions of interest (ROIs) in an image, including methods to map detections within the ROI
