@@ -19,7 +19,7 @@ class FeatureManager:
         self.objects2dMan=Potential2dObjectsManager(classes_number)
         
         # Loading FastAM model
-        self.fast_sam_model = FastSAM('FastSAM-x.pt')
+        self.fast_sam_model = FastSAM('FastSAM-s.pt')
         self.fast_sam_model.model.to(self.device)
 
     def process_new_image(self, image, rois, classes, DEBUGWINDOWVIDEO):
@@ -84,16 +84,21 @@ class FeatureManager:
                         keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np[0]]
                         image_with_keypoints = cv2.drawKeypoints(image, keypoints_cv, None, color=(0, 255, 0))
                         cv2.imshow("image_with_filtered_keypoints", cv2.cvtColor(image_with_keypoints, cv2.COLOR_BGR2RGB))
+                        cv2.waitKey(0)
 
     def generate_combined_mask_for_object(self, rois, image, classes):
         for idx, roi_img in enumerate(rois.images):
-            cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.3, iou=0.5, texts=classes[int(rois.classes[idx])])
+            #! Debug
+            print(f'Generating mask for object {classes[int(rois.classes[idx])]}')
+            cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.5, iou=0.5)
             combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
             for cur_result in cur_results:
                 if cur_result.masks is not None and len(cur_result.masks.data) > 0:
                     for mask_tensor in cur_result.masks.data:
                         mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
                         combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
+                cv2.imshow('mask', combined_mask*255)
+                cv2.waitKey(0)
             rois.add_mask(idx, combined_mask)
 
         h, w = image.shape[:2]
@@ -152,8 +157,8 @@ class FeatureManager:
                 "image1": {'keypoints': cur_feats['keypoints'], 'descriptors': cur_feats['descriptors']}
             })
             matches = rbd(matches)
-            # if i have at least 50% match i consider the object to be the same
-            if matches['matches'].size(0) > 0 and matches['matches'].size(0)/cur_feats['keypoints'].size(0) > 0.9:
+            # if i have at least 80% match i consider the object to be the same
+            if matches['matches'].size(0) > 0 and matches['matches'].size(0)/cur_feats['keypoints'].size(0) > 0.8:
                 # Update the object with the new features, only update if the object is not filled
                 if not cur_potential_2dobject.is_filtered:
                     cur_potential_2dobject.update_model(classes, rois.features[idx]['keypoints'], rois.features[idx]['descriptors'])
