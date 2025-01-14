@@ -10,7 +10,7 @@ import cv2
 import message_filters
 from dataclasses import dataclass
 from collections import deque
-from ultralytics import YOLO
+from ultralytics import YOLOWorld as YOLO
 import torch
 import time  # Import the time module
 # local classes
@@ -105,25 +105,18 @@ class Pan3D:
         
 
         # Initialize a YOLO-World model
-        model = YOLO('yolov8m-worldv2.pt')  # or select yolov8m/l-world.pt
+        model = YOLO('yolov8s-worldv2.pt')  # or select yolov8m/l-world.pt
 
         # Define custom classes
         model.set_classes(self.classes)
 
         # Save the model with the defined offline vocabulary
-        model.save("custom_yolov8m.pt")
+        model.save("custom_yolov8s.pt")
 
         # Load the model with the custom classes
-        self.yolo_model = YOLO('custom_yolov8m.pt')
+        self.yolo_model = YOLO('custom_yolov8s.pt')
         # move the model the the device
         self.yolo_model.model.to(device)
-
-    # def LoadingFastSamModel(self,device="cuda"):
-    #     # Create a FastSAM model
-    #     self.fast_sam_model = FastSAM('FastSAM-s.pt')  # or FastSAM-x.pt
-    #     # move the model the the device
-    #     self.fast_sam_model.model.to(device)
-
 
     def image_callback(self, color_msg, depth_msg):
         try:
@@ -204,48 +197,10 @@ class Pan3D:
                 except Exception as e:
                     # rospy.logerr("Failed to convert or publish image: %s", e)
                     print("Failed to convert or publish image: %s", e)
-
-    # def post_process_image(self, image):
-    #     # Example image processing; for now, just return the same image
-    #     # Add actual image processing logic here
-    #     # Show results
-    #     start_time = time.time()
-    #     results = self.yolo_model.predict(image, conf=0.2, iou=0.4)
-
-    #     # Plot all YOLO results on the original image
-    #     image_yoloW = image.copy()
-    #     image_fastSAM = image.copy()
-
-    #     for result in results:
-    #         image_yoloW = result.plot()
-
-    #         rois = self.extract_rois(image, result.boxes)
-    #         if len(rois.images) > 0:
-    #             for index, roi_img in enumerate(rois.images):
-    #                 print(f"Processing ROI image of size {roi_img.shape}")
-    #                 cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.5, iou=0.5)
-    #                 for cur_result in cur_results:
-    #                     if cur_result.masks is not None and len(cur_result.masks.data) > 0:
-    #                         print(f"Detected {len(cur_result.masks)} masks.")
-    #                         for mask_tensor in cur_result.masks.data:
-    #                             mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
-    #                             rois.add_mask(index, mask_array)
-    #                     else:
-    #                         print("Allert: No mask detected.")
-    #                         h_roi, w_roi = roi_img.shape[:2]
-    #                         empty_mask = np.zeros((h_roi, w_roi), dtype=np.uint8)
-    #                         rois.add_mask(index, empty_mask)
-    #             image_fastSAM = rois.apply_roi_masks_to_original(image.copy())
-            
-    #     self.featMan.process_new_image(image, rois, DEBUGWINDOWSVIDEO)
-    #     end_time = time.time()
-    #     print(f"Processing time inside post_process_image: {end_time - start_time:.2f} seconds")
-
-    #     return image_yoloW, image_fastSAM
     
     def post_process_image(self, image):
         start_time = time.time()
-        results = self.yolo_model.predict(image, conf=0.4, iou=0.5)
+        results = self.yolo_model.predict(image, conf=0.03, iou=0.2, max_det=100, agnostic_nms=True)
         image_yoloW = image.copy()
 
         for result in results:
@@ -257,8 +212,7 @@ class Pan3D:
         end_time = time.time()
         print(f"Processing time inside post_process_image: {end_time - start_time:.2f} seconds")
         return image_yoloW
-    
-    # TODO this function can be operate in gpu
+
     def extract_rois(self, image, boxes):
         """
         Extract regions of interest from the image using absolute box coordinates.

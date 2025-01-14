@@ -97,8 +97,6 @@ class FeatureManager:
                     for mask_tensor in cur_result.masks.data:
                         mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
                         combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
-                cv2.imshow('mask', combined_mask*255)
-                cv2.waitKey(0)
             rois.add_mask(idx, combined_mask)
 
         h, w = image.shape[:2]
@@ -107,6 +105,9 @@ class FeatureManager:
             x1_i, y1_i = rois.x1[index], rois.y1[index]
             x2_i, y2_i = rois.x2[index], rois.y2[index]
             roi_area = full_mask[y1_i:y2_i, x1_i:x2_i]
+            #! Debug
+            # cv2.imshow('mask', mask_array*255)
+            # cv2.waitKey(0)
             full_mask[y1_i:y2_i, x1_i:x2_i] = np.logical_or(roi_area, mask_array).astype(np.uint8)
 
         return full_mask

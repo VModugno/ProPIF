@@ -23,7 +23,7 @@ from Pan3d import Pan3D
 import rospy
 
 # video source
-classes= ["flower", "leaf", "plant", "tree"]
+classes= ["flower", "leaf", "tree", "plant", ""]
 video_name = "flower_2.mp4"
 video_input = True
 vid_path = os.path.join(os.getcwd(),"video", video_name)
