@@ -18,7 +18,7 @@ class FeatureManager:
         self.matcher = LightGlue(features="superpoint").eval().to(self.device)
         self.objects2dMan=Potential2dObjectsManager(classes_number)
         
-        # Loading FastAM model
+        # Loading FastSAM model
         self.fast_sam_model = FastSAM('FastSAM-s.pt')
         self.fast_sam_model.model.to(self.device)
 
@@ -55,19 +55,24 @@ class FeatureManager:
             if DEBUGWINDOWVIDEO:
                 input("Press Enter to continue...")
 
-            #! Densify objects
-            self.check_and_densify_objects(image, rois, classes)
+            # #! Densify objects
+            # self.check_and_densify_objects(image, rois, classes)
             
             # here i check if there are existing descripotrs and keypoints
             #! Note that is matching function will remove the roi from the list of rois
             if len(self.objects2dMan.get_potential_objects())>0:  # Only compare if there are existing features
+                pop_idx_list = []
                 for idx, cur_potential_2dobject in enumerate(self.objects2dMan.get_potential_objects()):
                     # Check if the new features match any existing features
-                    self.matching_existing_features(cur_potential_2dobject, rois)
+                    pop_idx_list += self.matching_existing_features(cur_potential_2dobject, rois)
+                self.check_and_densify_objects(image, rois, classes)
+                pop_idx_list = list(set(pop_idx_list))
+                self.pop_rois(rois, pop_idx_list)
                 if len(rois.images)>0:
                     self.store_new_2dobjects(rois)
                     print("New features stored from ROIs.")
             else:
+                # Initiate new objects if there's no existing objects
                 self.store_new_2dobjects(rois)  # Store features if no existing features are present
                 print("Initial features from ROIs stored.")
     
@@ -133,6 +138,7 @@ class FeatureManager:
         # create a list of index with the rois from the closest to the farthest to the current object
         
         distances = []
+        pop_idx_list = []
         for idx, _ in enumerate(rois.images):
             distance = np.linalg.norm(np.array([cur_potential_2dobject.last_roi_center_position['x'], cur_potential_2dobject.last_roi_center_position['y']]) - np.array([rois.cx[idx], rois.cy[idx]]))
             distances.append((distance, idx))
@@ -166,12 +172,21 @@ class FeatureManager:
                     cur_potential_2dobject.last_roi_center_position_x = rois.cx[idx]
                     cur_potential_2dobject.last_roi_center_position_y = rois.cy[idx]
                 #! remove the current roi from the list of rois
-                rois.images.pop(idx)
-                rois.features.pop(idx)
-                rois.cx.pop(idx)
-                rois.cy.pop(idx)
-                rois.classes.pop(idx)
+                pop_idx_list.append(idx)
                 break
+        return pop_idx_list
+    
+    def pop_rois(self, rois, idx_list):
+        # Sort the index list in descending order to avoid shifting indices
+        sorted_indices = sorted(idx_list, reverse=True)
+        print(f'Popping ROIs: {sorted_indices}')
+        for idx in sorted_indices:
+            print(f'Removing ROI {idx} from list.')
+            rois.images.pop(idx)
+            rois.features.pop(idx)
+            rois.cx.pop(idx)
+            rois.cy.pop(idx)
+            rois.classes.pop(idx)
 
     def store_new_2dobjects(self,rois):
         for idx, _ in enumerate(rois.images):

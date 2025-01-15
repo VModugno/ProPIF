@@ -102,8 +102,6 @@ class Pan3D:
         #rospy.loginfo("Keyboard driver initialized. Press 'a' to start accumulating, 'z' to stop accumulating, 'd' to save data. ")
     
     def LoadingYoloWorldModelWithClasses(self,device="cuda"):
-        
-
         # Initialize a YOLO-World model
         model = YOLO('yolov8s-worldv2.pt')  # or select yolov8m/l-world.pt
 
@@ -199,6 +197,9 @@ class Pan3D:
                     print("Failed to convert or publish image: %s", e)
     
     def post_process_image(self, image):
+        '''
+        Post-process the image using the YOLO model.
+        '''
         start_time = time.time()
         results = self.yolo_model.predict(image, conf=0.03, iou=0.2, max_det=100, agnostic_nms=True)
         image_yoloW = image.copy()
