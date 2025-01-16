@@ -54,20 +54,20 @@ class FeatureManager:
             #! Debug frame by frame
             if DEBUGWINDOWVIDEO:
                 input("Press Enter to continue...")
-
-            # #! Densify objects
-            # self.check_and_densify_objects(image, rois, classes)
             
             # here i check if there are existing descripotrs and keypoints
             #! Note that is matching function will remove the roi from the list of rois
             if len(self.objects2dMan.get_potential_objects())>0:  # Only compare if there are existing features
                 pop_idx_list = []
                 for idx, cur_potential_2dobject in enumerate(self.objects2dMan.get_potential_objects()):
-                    # Check if the new features match any existing features
+                    # Check if the new features match any existing features, and update the objects stored
                     pop_idx_list += self.matching_existing_features(cur_potential_2dobject, rois)
+                #! Densify objects
                 self.check_and_densify_objects(image, rois, classes)
+                # Remove the ROIs that have been matched
                 pop_idx_list = list(set(pop_idx_list))
                 self.pop_rois(rois, pop_idx_list)
+                # Store new objects if there are any remaining ROIs
                 if len(rois.images)>0:
                     self.store_new_2dobjects(rois)
                     print("New features stored from ROIs.")
@@ -81,7 +81,8 @@ class FeatureManager:
         for obj in self.objects2dMan.get_potential_objects():
             if not obj.is_filtered:
                 if obj.evaluate_model():
-                    full_mask = self.generate_combined_mask_for_object(rois, image, classes)
+                    obj_idx = obj.get_idx()
+                    full_mask = self.generate_combined_mask_for_object(rois, image, classes, obj_idx)
                     if full_mask is not None:
                         obj.filter_SAM(full_mask)
                         #! plot filtered keypoints on the image, debug
@@ -91,18 +92,34 @@ class FeatureManager:
                         cv2.imshow("image_with_filtered_keypoints", cv2.cvtColor(image_with_keypoints, cv2.COLOR_BGR2RGB))
                         cv2.waitKey(0)
 
-    def generate_combined_mask_for_object(self, rois, image, classes):
-        for idx, roi_img in enumerate(rois.images):
-            #! Debug
-            print(f'Generating mask for object {classes[int(rois.classes[idx])]}')
-            cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.5, iou=0.5)
-            combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
-            for cur_result in cur_results:
-                if cur_result.masks is not None and len(cur_result.masks.data) > 0:
-                    for mask_tensor in cur_result.masks.data:
-                        mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
-                        combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
-            rois.add_mask(idx, combined_mask)
+    def generate_combined_mask_for_object(self, rois, image, classes, obj_idx):
+        print(f'Generating mask for object {classes[int(rois.classes[obj_idx])]}')
+        roi_center_x = rois.images[obj_idx].shape[1] // 2
+        roi_center_y = rois.images[obj_idx].shape[0] // 2
+        roi_center_point = [roi_center_x, roi_center_y]
+        roi_img = rois.images[obj_idx]
+        cur_results = self.fast_sam_model.predict(rois.images[obj_idx], retina_masks=True, conf=0.4, iou=0.5, points=[roi_center_point])
+        
+        combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
+        for cur_result in cur_results:
+            if cur_result.masks is not None and len(cur_result.masks.data) > 0:
+                for mask_tensor in cur_result.masks.data:
+                    mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
+                    combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
+        rois.add_mask(obj_idx, combined_mask)
+        
+        
+        # for idx, roi_img in enumerate(rois.images):
+        #     #! Debug
+        #     print(f'Generating mask for object {classes[int(rois.classes[idx])]}')
+        #     cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.5, iou=0.5)
+            # combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
+            # for cur_result in cur_results:
+            #     if cur_result.masks is not None and len(cur_result.masks.data) > 0:
+            #         for mask_tensor in cur_result.masks.data:
+            #             mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
+            #             combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
+            # rois.add_mask(idx, combined_mask)
 
         h, w = image.shape[:2]
         full_mask = np.zeros((h, w), dtype=np.uint8)
@@ -168,7 +185,7 @@ class FeatureManager:
             if matches['matches'].size(0) > 0 and matches['matches'].size(0)/cur_feats['keypoints'].size(0) > 0.8:
                 # Update the object with the new features, only update if the object is not filled
                 if not cur_potential_2dobject.is_filtered:
-                    cur_potential_2dobject.update_model(classes, rois.features[idx]['keypoints'], rois.features[idx]['descriptors'])
+                    cur_potential_2dobject.update_model(classes, rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], idx)
                     cur_potential_2dobject.last_roi_center_position_x = rois.cx[idx]
                     cur_potential_2dobject.last_roi_center_position_y = rois.cy[idx]
                 #! remove the current roi from the list of rois
@@ -191,5 +208,6 @@ class FeatureManager:
     def store_new_2dobjects(self,rois):
         for idx, _ in enumerate(rois.images):
             print(f'Adding new object with class {rois.classes[idx]}')
-            self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx])
+            if rois.classes[idx] != 3.0:
+                self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx], idx)
 

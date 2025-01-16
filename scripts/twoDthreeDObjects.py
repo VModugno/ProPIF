@@ -6,7 +6,7 @@ import cv2, time
 # potential object class that contains the keypoints and descriptors of the object
 class Potential2dObjects:
     # class_numbers is the total number of classes that im looking for in the current experiment
-    def __init__(self, total_classes, keypoints=[], descriptors=[], init_class=0, init_roi_center_position_x=0, init_roi_center_position_y=0):   
+    def __init__(self, total_classes, keypoints=[], descriptors=[], init_class=0, init_roi_center_position_x=0, init_roi_center_position_y=0, idx=0):   
         # here i have all the list of the existing keypoints and descriptors
         self.total_classes_number = total_classes
         self.existing_keypoints = keypoints
@@ -25,15 +25,19 @@ class Potential2dObjects:
             'y': init_roi_center_position_y
         }
         self.is_filtered = False
+        self.idx = idx
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     def class_hot_encoding(self,cur_class_number):
         cur_class_hot_encoding = np.zeros(self.total_classes_number)
         cur_class_hot_encoding[cur_class_number] = 1
         return cur_class_hot_encoding
+    
+    def get_idx(self):
+        return self.idx
 
     # update the model with new class information
-    def update_model(self, new_class, keypoints, descriptors):
+    def update_model(self, new_class, keypoints, descriptors, idx):
         if self.is_filtered:
             print("Object has been filtered. Skipping update.")
             return
@@ -44,6 +48,7 @@ class Potential2dObjects:
         self.existing_keypoints = keypoints
         # Use new descriptors
         self.existing_descriptors = descriptors
+        self.idx = idx
 
     # this provide the probability of the to be in certain class
     def evaluate_model(self):
@@ -106,14 +111,15 @@ class Potential2dObjectsManager:
         self.potential_objects = []
         self.model = pm.Model()
     
-    def add_potential_object(self, keypoints, descriptors, init_class, init_roi_center_position_x, init_roi_center_position_y):
+    def add_potential_object(self, keypoints, descriptors, init_class, init_roi_center_position_x, init_roi_center_position_y, idx):
         potential_object = Potential2dObjects(
             self.total_classes_number,
             keypoints,
             descriptors,
             init_class,
             init_roi_center_position_x,
-            init_roi_center_position_y
+            init_roi_center_position_y,
+            idx
         )
         self.potential_objects.append(potential_object)
     
