@@ -4,6 +4,7 @@
 # every time we get a new image the ROIs class is fully recomputed and the masks associated 
 # to each roi are stored in the class
 import numpy as np
+
 class Rois:
     """
     A class to handle regions of interest (ROIs) in an image, including methods to map detections within the ROI
@@ -32,25 +33,25 @@ class Rois:
         """
         self.images = images
         # here i want to store the masks associated to each roi 
-        self.masks = [] # this are the mask from SAM
+        self.masks = [] # this are the mask from SAM, (roi_index, mask)
         self.features = [] # this are the features from lightglue
         self.x1 = x1
         self.y1 = y1
         self.x2 = x2
         self.y2 = y2
-        self.cx = (x1 + x2) // 2
-        self.cy = (y1 + y2) // 2
+        self.cx = [(x1_i + x2_i) // 2 for x1_i, x2_i in zip(x1, x2)]
+        self.cy = [(y1_i + y2_i) // 2 for y1_i, y2_i in zip(y1, y2)]
         self.classes = classes
 
     # in order to guarantee the correct mathching between rois and mask that should be called in order to associate the mask to the correct roi
-    def add_mask(self, mask):
+    def add_mask(self, index, mask):
         """
         Add a mask to the list of masks associated with the ROI.
         
         Args:
             mask: The mask to add to the list.
         """
-        self.masks.append(mask)
+        self.masks.append((index, mask))
 
     def add_features(self, features):
         """
@@ -62,31 +63,28 @@ class Rois:
         self.features.append(features)
 
 
-    def apply_roi_masks_to_original(self,image):
+    def apply_roi_masks_to_original(self, image):
         """
-        Apply an ROI mask back to the original image at the specified bounding box location.
+        Apply ROI masks back to the original image at the specified bounding box locations.
 
         Args:
             image (numpy.ndarray): The original image.
-            roi_mask (numpy.ndarray): The mask obtained from the ROI.
-            bbox (tuple): The bounding box coordinates (x1, y1, x2, y2) from which the ROI was extracted.
 
         Returns:
-            numpy.ndarray: The original image with the ROI mask applied.
+            numpy.ndarray: The original image with the ROI masks applied.
         """
-        h, w = image.shape[:2]  # Height and width of the original image
+        h, w = image.shape[:2]
 
-        # Create a full-size mask that matches the original image dimensions
         full_mask = np.zeros((h, w), dtype=np.uint8)
 
-        # Ensure the ROI mask fits into the full mask at the specified coordinates
-        for i in len(self.images):
-            full_mask[self.y1[i]:self.y2[i], self.x1[i]:self.x2[i]] = self.masks[i]
-
-        # Apply the mask to the original image
-        # For visualization, you can color the mask region - here we simply highlight it
+        for index, mask_array in self.masks:
+            print("Applying mask to ROI", index)
+            x1_i, y1_i = self.x1[index], self.y1[index]
+            x2_i, y2_i = self.x2[index], self.y2[index]
+            roi_area = full_mask[y1_i:y2_i, x1_i:x2_i]
+            full_mask[y1_i:y2_i, x1_i:x2_i] = np.logical_or(roi_area, mask_array).astype(np.uint8)
         masked_image = image.copy()
-        masked_image[full_mask > 0] = (255, 0, 0)  # Example: paint the mask region blue
+        masked_image[full_mask > 0] = (255, 0, 0)
 
         return masked_image
 

@@ -1,9 +1,3 @@
-
-
-
-
-
-
 # define the algorithm:
 
 # 1. zero 3d points no images
@@ -29,10 +23,10 @@ from Pan3d import Pan3D
 import rospy
 
 # video source
-classes= ["flower", "leaf", "plant", "tree"]
-video_name = "garden_video.mp4"
+classes= ["flower", "leaf", "tree", "plant", ""]
+video_name = "flower_2.mp4"
 video_input = True
-vid_path = os.path.join(os.getcwd(),"scripts","video", video_name)
+vid_path = os.path.join(os.getcwd(),"video", video_name)
 
 # camera source
 #classes= ["monitor"]
