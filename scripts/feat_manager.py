@@ -107,19 +107,6 @@ class FeatureManager:
                     mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
                     combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
         rois.add_mask(obj_idx, combined_mask)
-        
-        
-        # for idx, roi_img in enumerate(rois.images):
-        #     #! Debug
-        #     print(f'Generating mask for object {classes[int(rois.classes[idx])]}')
-        #     cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.5, iou=0.5)
-            # combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
-            # for cur_result in cur_results:
-            #     if cur_result.masks is not None and len(cur_result.masks.data) > 0:
-            #         for mask_tensor in cur_result.masks.data:
-            #             mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
-            #             combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
-            # rois.add_mask(idx, combined_mask)
 
         h, w = image.shape[:2]
         full_mask = np.zeros((h, w), dtype=np.uint8)
