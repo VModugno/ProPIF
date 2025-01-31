@@ -22,7 +22,7 @@ class FeatureManager:
         self.fast_sam_model = FastSAM('FastSAM-s.pt')
         self.fast_sam_model.model.to(self.device)
 
-    def process_new_image(self, image, rois, classes, DEBUGWINDOWVIDEO):
+    def process_new_image(self, image, rois, classes, cam_loc_manager, DEBUGWINDOWVIDEO):
         # Create an image where only the rois are visible
         if len(rois.images) == 0:
             print("No ROIs found.")
@@ -63,7 +63,7 @@ class FeatureManager:
                     # Check if the new features match any existing features, and update the objects stored
                     pop_idx_list += self.matching_existing_features(cur_potential_2dobject, rois)
                 #! Densify objects
-                self.check_and_densify_objects(image, rois, classes)
+                self.check_and_densify_objects(image, rois, classes, cam_loc_manager)
                 # Remove the ROIs that have been matched
                 pop_idx_list = list(set(pop_idx_list))
                 self.pop_rois(rois, pop_idx_list)
@@ -76,7 +76,7 @@ class FeatureManager:
                 self.store_new_2dobjects(rois)  # Store features if no existing features are present
                 print("Initial features from ROIs stored.")
     
-    def check_and_densify_objects(self, image, rois, classes):
+    def check_and_densify_objects(self, image, rois, classes, cam_loc_manager):
         print(f'length of objects list: {len(self.objects2dMan.get_potential_objects())}')
         for obj in self.objects2dMan.get_potential_objects():
             if not obj.is_filtered:
@@ -85,11 +85,15 @@ class FeatureManager:
                     full_mask = self.generate_combined_mask_for_object(rois, image, classes, obj_idx)
                     if full_mask is not None:
                         obj.filter_SAM(full_mask)
+                        cv2.imwrite('.cache/query/query.png', image)
+                        cam_loc = cam_loc_manager.get_cam_loc()
+                        print(f'Camera location: {cam_loc.Rotation_matrix}, {cam_loc.Translation_vector}')
+                        # TODO Convert keypoints to 3D points, Store 3D objects here!!!
                         #! plot filtered keypoints on the image, debug
                         keypoints_np = obj.existing_keypoints.cpu().numpy()
                         keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np[0]]
                         image_with_keypoints = cv2.drawKeypoints(image, keypoints_cv, None, color=(0, 255, 0))
-                        cv2.imshow("image_with_filtered_keypoints", cv2.cvtColor(image_with_keypoints, cv2.COLOR_BGR2RGB))
+                        cv2.imshow("image_with_filtered_keypoints", image_with_keypoints)
                         cv2.waitKey(0)
 
     def generate_combined_mask_for_object(self, rois, image, classes, obj_idx):
@@ -107,19 +111,6 @@ class FeatureManager:
                     mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
                     combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
         rois.add_mask(obj_idx, combined_mask)
-        
-        
-        # for idx, roi_img in enumerate(rois.images):
-        #     #! Debug
-        #     print(f'Generating mask for object {classes[int(rois.classes[idx])]}')
-        #     cur_results = self.fast_sam_model.predict(roi_img, retina_masks=True, conf=0.5, iou=0.5)
-            # combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
-            # for cur_result in cur_results:
-            #     if cur_result.masks is not None and len(cur_result.masks.data) > 0:
-            #         for mask_tensor in cur_result.masks.data:
-            #             mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
-            #             combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
-            # rois.add_mask(idx, combined_mask)
 
         h, w = image.shape[:2]
         full_mask = np.zeros((h, w), dtype=np.uint8)

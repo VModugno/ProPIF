@@ -12,11 +12,13 @@ from dataclasses import dataclass
 from collections import deque
 from ultralytics import YOLOWorld as YOLO
 import torch
-import time  # Import the time module
-# local classes
+import pyrealsense2 as rs
+import time
 
+# local classes
 from roi import Rois as roi
 from feat_manager import FeatureManager
+from camera_loc_manager import CameraLocManager
 
 torch.set_grad_enabled(False)
 
@@ -44,6 +46,37 @@ class Pan3D:
         self.rgb_image_stack = []
         self.depth_image_stack = []
         
+        # Initiate camera info
+        self.focal_length = 427.03
+        self.center_x = 315.78
+        self.center_y = 240.92
+        self.k = 0.0
+        self.cam_width = 640
+        self.cam_height = 480
+        self.fps = 30
+        
+        if not self.video_input:
+            pipeline = rs.pipeline()
+            config = rs.config()
+
+            # Change here to modify camara resolution and fps
+            config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+            config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+            
+            profile = pipeline.start(config)
+            color_profile = profile.get_stream(rs.stream.color)
+            color_intrin = color_profile.as_video_stream_profile().get_intrinsics()
+            
+            self.focal_length = (color_intrin.fx + color_intrin.fy) / 2
+            self.center_x = color_intrin.ppx
+            self.center_y = color_intrin.ppy
+            self.k = 0.0
+            self.cam_width = color_intrin.width
+            self.cam_height = color_intrin.height
+        
+        # Initialize the camera location manager
+        self.cam_loc_manager = CameraLocManager(self.cam_height, self.cam_width, self.focal_length, self.center_x, self.center_y, self.k)
+        
         # Initialize subscribers
         if not self.video_input:
             self.color_sub = message_filters.Subscriber("/camera/color/image_raw", Image)
@@ -55,6 +88,7 @@ class Pan3D:
             # Open the video file
             self.video_path = video_path
             self.cap = cv2.VideoCapture(video_path)
+            self.hloc_cap = cv2.VideoCapture(video_path)
             if not self.cap.isOpened():
                 #rospy.logerr("Error opening video file. Stopping object initialization.")
                 raise ValueError("Error opening video file. Stopping object initialization.")
@@ -73,9 +107,11 @@ class Pan3D:
         # Synchronize the subscribers by time
     
 
-        # Initialize keyboard handler thread
+        # Initize keyboard handler thread
         #self.keyboard_thread = threading.Thread(target=self.keyboard_handler)
         self.images = deque(maxlen=max_length)
+        self.hloc_thread = threading.Thread(target=self.Build3DModel)
+        self.hloc_thread.daemon = True
         self.processing_thread = threading.Thread(target=self.process_images)
         self.processing_thread.daemon = True  # Ensure the thread exits when the main program does
 
@@ -101,6 +137,29 @@ class Pan3D:
 
         #rospy.loginfo("Keyboard driver initialized. Press 'a' to start accumulating, 'z' to stop accumulating, 'd' to save data. ")
     
+    def Build3DModel(self):
+        print("Building 3D model...")
+        if self.video_input:
+            image_count = 0
+            frame_count = 0
+            while image_count < 10:
+                ret, frame = self.hloc_cap.read()
+                if not ret:
+                    print("Video is too short for building 3D model.")
+                    break
+
+                if frame_count % 30 == 0:                    
+                    image_path = f'.cache/mapping/reference_{image_count}.png'
+                    cv2.imwrite(image_path, frame)
+                    image_count += 1
+                
+                frame_count += 1
+
+            self.hloc_cap.release()
+            self.cam_loc_manager.reconstruction_3D()
+            print(f"\033[92mSuccessfully build 3D model\033[0m")
+        # TODO handle camera input here
+        
     def LoadingYoloWorldModelWithClasses(self,device="cuda"):
         # Initialize a YOLO-World model
         model = YOLO('yolov8s-worldv2.pt')  # or select yolov8m/l-world.pt
@@ -162,9 +221,8 @@ class Pan3D:
                     # rospy.loginfo("End of video file reached.")
                     print("End of video file reached.")
                     break
-                color_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                depth_image = np.zeros_like(color_image)
-                image_data = ImageData(rgb_image=color_image, depth_image=depth_image, timestamp=time.time())
+                depth_image = np.zeros_like(frame)
+                image_data = ImageData(rgb_image=frame, depth_image=depth_image, timestamp=time.time())
                 cv2.imshow("Video", frame)
                 self.images.append(image_data)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -176,7 +234,6 @@ class Pan3D:
 
                 start_time = time.time()
                 image_yolow = self.post_process_image(image_data.rgb_image)
-                image_yolow_rgb = cv2.cvtColor(image_yolow, cv2.COLOR_BGR2RGB)
                 # image_fast_sam_rgb = cv2.cvtColor(image_fast_sam, cv2.COLOR_BGR2RGB)
                 # cv2.imshow("Video_sam", image_fast_sam_rgb)
                 # cv2.imshow("Video_yolow", image_yolow_rgb)
@@ -184,7 +241,7 @@ class Pan3D:
                 print(f"Processing time: {end_time - start_time:.2f} seconds")
                 if self.video_input:
                     # cv2.imshow("Video_sam", image_fast_sam_rgb)
-                    cv2.imshow("Video_yolow", image_yolow_rgb)
+                    cv2.imshow("Video_yolow", image_yolow)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                 try:
@@ -208,7 +265,7 @@ class Pan3D:
             image_yoloW = result.plot()
             rois = self.extract_rois(image, result.boxes)
 
-            self.featMan.process_new_image(image, rois, self.classes, DEBUGWINDOWSVIDEO)
+            self.featMan.process_new_image(image, rois, self.classes, self.cam_loc_manager, DEBUGWINDOWSVIDEO)
 
         end_time = time.time()
         print(f"Processing time inside post_process_image: {end_time - start_time:.2f} seconds")
@@ -247,12 +304,14 @@ class Pan3D:
 
     def run(self):
         self.processing_thread.start()
+        self.hloc_thread.start()
         #self.keyboard_thread.start()
 
         # Use rospy.spin() to keep your node alive and handle callbacks
         # rospy.spin()
         #pygame.quit()
         #self.keyboard_thread.join()
+        self.hloc_thread.join()
         self.processing_thread.join()
 
     def cleanup(self):

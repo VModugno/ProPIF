@@ -55,7 +55,7 @@ class Potential2dObjects:
         alpha_sum = np.sum(self.alpha)
         expected_probs = self.alpha / alpha_sum
         max_prob = np.max(expected_probs)
-        return max_prob > 0.8
+        return max_prob > 0.9
 
     
     def filter_SAM(self, mask):
