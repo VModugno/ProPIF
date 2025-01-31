@@ -87,6 +87,7 @@ class FeatureManager:
                         obj.filter_SAM(full_mask)
                         #! plot filtered keypoints on the image, debug
                         keypoints_np = obj.existing_keypoints.cpu().numpy()
+                        # TODO Convert keypoints to 3D points, Store 3D objects here!!!
                         keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np[0]]
                         image_with_keypoints = cv2.drawKeypoints(image, keypoints_cv, None, color=(0, 255, 0))
                         cv2.imshow("image_with_filtered_keypoints", cv2.cvtColor(image_with_keypoints, cv2.COLOR_BGR2RGB))
