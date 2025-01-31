@@ -6,8 +6,8 @@ import time
 pipeline = rs.pipeline()
 config = rs.config()
 
-config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
-config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
+config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)
+config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 15)
 
 profile = pipeline.start(config)
 
@@ -73,7 +73,7 @@ try:
         if key == ord('r'):
             if not is_recording:
                 fourcc = cv2.VideoWriter_fourcc(*'XVID')
-                video_writer = cv2.VideoWriter('output.avi', fourcc, 30.0, (1280, 720))
+                video_writer = cv2.VideoWriter('output.avi', fourcc, 30.0, (640, 480))
                 is_recording = True
                 start_time = time.time()
                 photo_count = 0
@@ -88,12 +88,12 @@ try:
         if is_recording:
             current_time = time.time() - start_time
 
-            if current_time <= 3.5 and photo_count < 11:
+            if current_time <= 5.5 and photo_count < 21:
                 if current_time >= next_photo_time:
                     cv2.imwrite(f'reference_{photo_count}.png', color_image)
                     print(f"Saved interval photo {photo_count}")
                     photo_count += 1
-                    next_photo_time = photo_count * 0.3
+                    next_photo_time = photo_count * 0.25
 
             if current_time >= 60:
                 video_writer.release()

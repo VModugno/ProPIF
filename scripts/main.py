@@ -24,7 +24,7 @@ import rospy
 
 # video source
 classes= ["flower", "leaf", "tree", "plant", ""]
-video_name = "record_flower.avi"
+video_name = "flower_2.mp4"
 video_input = True
 vid_path = os.path.join(os.getcwd(),"video", video_name)
 
