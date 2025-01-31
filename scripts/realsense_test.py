@@ -1,12 +1,13 @@
 import pyrealsense2 as rs
 import cv2
 import numpy as np
+import time
 
 pipeline = rs.pipeline()
 config = rs.config()
 
-config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
 
 profile = pipeline.start(config)
 
@@ -38,6 +39,7 @@ align = rs.align(align_to)
 
 is_recording = False
 video_writer = None
+start_time = None
 
 try:
     while True:
@@ -71,15 +73,33 @@ try:
         if key == ord('r'):
             if not is_recording:
                 fourcc = cv2.VideoWriter_fourcc(*'XVID')
-                video_writer = cv2.VideoWriter('output.avi', fourcc, 30.0, (640, 480))
+                video_writer = cv2.VideoWriter('output.avi', fourcc, 30.0, (1280, 720))
                 is_recording = True
+                start_time = time.time()
+                photo_count = 0
+                next_photo_time = 0.0
                 print("Recording started")
             else:
                 video_writer.release()
                 is_recording = False
-                print("Recording stopped")
+                print("Recording stopped manually")
 
+        # Recording loop
         if is_recording:
+            current_time = time.time() - start_time
+
+            if current_time <= 3.5 and photo_count < 11:
+                if current_time >= next_photo_time:
+                    cv2.imwrite(f'reference_{photo_count}.png', color_image)
+                    print(f"Saved interval photo {photo_count}")
+                    photo_count += 1
+                    next_photo_time = photo_count * 0.3
+
+            if current_time >= 60:
+                video_writer.release()
+                is_recording = False
+                print("Recording stopped automatically after 60 seconds")
+
             video_writer.write(color_image)
 
         if key == ord('q'):

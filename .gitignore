@@ -8,3 +8,4 @@ scripts/assets/*
 scripts/__pycache__/
 .vscode/
 models/
+.cache/
