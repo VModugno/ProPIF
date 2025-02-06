@@ -24,9 +24,11 @@ import rospy
 
 # video source
 classes= ["flower", "leaf", "tree", "plant", ""]
-video_name = "flower_2.mp4"
+video_name = "rgb_video.avi"
+depth_vid_name = "depth_video.avi"
 video_input = True
 vid_path = os.path.join(os.getcwd(),"video", video_name)
+depth_vid_path = os.path.join(os.getcwd(),"video", depth_vid_name)
 
 # camera source
 #classes= ["monitor"]
@@ -36,7 +38,7 @@ if __name__ == '__main__':
     try:
         # extract paht of the current video from a folder called video inside the current folder
         # with os module 
-        threedPan = Pan3D(classes, video_input=video_input, video_path=vid_path, start_minute=0)
+        threedPan = Pan3D(classes, video_input=video_input, video_path=vid_path, depth_vid_path=depth_vid_path, start_minute=0)
         threedPan.run()
         threedPan.cleanup()
     except rospy.ROSInterruptException:

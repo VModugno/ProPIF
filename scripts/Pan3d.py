@@ -31,20 +31,12 @@ class ImageData:
     timestamp: float  # Assuming timestamp is required
 
 class Pan3D:
-    def __init__(self,classes,max_length=1000,video_input=False, video_path=None, start_minute=10, device="cuda"):
+    def __init__(self,classes,max_length=1000,video_input=False, video_path=None, depth_vid_path=None, start_minute=10, device="cuda"):
         # rospy.init_node('ThreeDPan', anonymous=True)
         self.video_input = video_input
         self.running = True
         # Create CvBridge to convert ROS images to OpenCV format
         self.bridge = CvBridge()
-        
-        # Current state storage
-        self.current_color_image = None
-        self.current_depth_image = None
-        
-        # List to hold trajectory data and images
-        self.rgb_image_stack = []
-        self.depth_image_stack = []
         
         # Initiate camera info
         self.focal_length = 427.03
@@ -87,11 +79,22 @@ class Pan3D:
         else:
             # Open the video file
             self.video_path = video_path
+            self.depth_vid_path = depth_vid_path
+            
+            # RGB video stream
             self.cap = cv2.VideoCapture(video_path)
-            self.hloc_cap = cv2.VideoCapture(video_path)
             if not self.cap.isOpened():
                 #rospy.logerr("Error opening video file. Stopping object initialization.")
                 raise ValueError("Error opening video file. Stopping object initialization.")
+            
+            # depth video stream
+            self.depth_cap = cv2.VideoCapture(depth_vid_path)
+            if not self.depth_cap.isOpened():
+                raise ValueError(f"Error opening depth video file: {depth_vid_path}")
+            
+            # HLOC video stream
+            self.hloc_cap = cv2.VideoCapture(video_path)
+
             self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
             self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -217,13 +220,14 @@ class Pan3D:
             # here i create the image from the video file 
             if self.video_input:
                 # Read the next frame from the video file
-                ret, frame = self.cap.read()
-                if not ret:
+                ret_color, frame = self.cap.read()
+                ret_depth, depth_frame = self.depth_cap.read()
+                if not ret_color or not ret_depth:
                     # rospy.loginfo("End of video file reached.")
                     print("End of video file reached.")
                     break
-                depth_image = np.zeros_like(frame)
-                image_data = ImageData(rgb_image=frame, depth_image=depth_image, timestamp=time.time())
+
+                image_data = ImageData(rgb_image=frame, depth_image=depth_frame, timestamp=time.time())
                 
                 #! Debug: Show video frame by frame
                 # cv2.imshow("Video", frame)

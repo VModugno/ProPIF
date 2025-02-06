@@ -11,8 +11,6 @@ class Potential2dObject:
         self.total_classes_number = total_classes
         self.existing_keypoints = keypoints
         self.existing_descriptors = descriptors
-        #self.alpha = np.ones(classes_number)
-        #self.p_label = pm.Dirichlet('class_probs', a=np.ones(classes_number))  # Uniform prior over the simplex
         self.alpha = np.ones(self.total_classes_number)
         class_hot_encoding = self.class_hot_encoding(int(init_class))
         self.alpha += class_hot_encoding
