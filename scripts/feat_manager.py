@@ -1,9 +1,9 @@
 import torch
-from lightglue import LightGlue, SuperPoint, DISK
-from lightglue.utils import load_image, rbd
+from lightglue import LightGlue, SuperPoint
+from lightglue.utils import rbd
 import numpy as np
 import cv2
-from twoDthreeDObjects import Potential2dObjectsManager, Potential2dObjects
+from twoDthreeDObjects import Potential2dObjectsManager
 from ultralytics import FastSAM
 import time
 
@@ -28,8 +28,7 @@ class FeatureManager:
             print("No ROIs found.")
         else:
             rois_image = self.create_masked_image(image, rois)
-            rois_image_rgb = cv2.cvtColor(rois_image, cv2.COLOR_BGR2RGB)
-            rois_image_with_keypoints = rois_image_rgb.copy()
+            # rois_image_with_keypoints = rois_image.copy()
 
             for idx, roi_image in enumerate(rois.images):
                 features = self.extract_features(roi_image)
@@ -45,10 +44,11 @@ class FeatureManager:
 
                 rois.add_features(features)
 
-                keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np]
-                rois_image_with_keypoints = cv2.drawKeypoints(rois_image_with_keypoints, keypoints_cv, None, color=(0, 255, 0))
+                # keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np]
+                # rois_image_with_keypoints = cv2.drawKeypoints(rois_image_with_keypoints, keypoints_cv, None, color=(0, 255, 0))
 
-            cv2.imshow("rois_image_with_keypoints", rois_image_with_keypoints)
+            #! Debug: Show the image with keypoints
+            # cv2.imshow("rois_image_with_keypoints", rois_image_with_keypoints)
             cv2.waitKey(1)
 
             #! Debug frame by frame
@@ -202,3 +202,5 @@ class FeatureManager:
             if rois.classes[idx] != 3.0:
                 self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx], idx)
 
+    def set_model_completed(self):
+        self.objects2dMan.set_model_completed()

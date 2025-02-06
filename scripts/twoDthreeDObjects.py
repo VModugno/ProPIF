@@ -4,9 +4,9 @@ import torch
 import cv2, time
 
 # potential object class that contains the keypoints and descriptors of the object
-class Potential2dObjects:
+class Potential2dObject:
     # class_numbers is the total number of classes that im looking for in the current experiment
-    def __init__(self, total_classes, keypoints=[], descriptors=[], init_class=0, init_roi_center_position_x=0, init_roi_center_position_y=0, idx=0):   
+    def __init__(self, total_classes, keypoints=[], descriptors=[], init_class=0, init_roi_center_position_x=0, init_roi_center_position_y=0, idx=0, model_completed=False):   
         # here i have all the list of the existing keypoints and descriptors
         self.total_classes_number = total_classes
         self.existing_keypoints = keypoints
@@ -24,6 +24,7 @@ class Potential2dObjects:
         }
         self.is_filtered = False
         self.idx = idx
+        self.model_completed = model_completed
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     def class_hot_encoding(self,cur_class_number):
@@ -53,7 +54,7 @@ class Potential2dObjects:
         alpha_sum = np.sum(self.alpha)
         expected_probs = self.alpha / alpha_sum
         max_prob = np.max(expected_probs)
-        return max_prob > 0.9
+        return max_prob > 0.9 and self.model_completed
 
     
     def filter_SAM(self, mask):
@@ -62,8 +63,8 @@ class Potential2dObjects:
             return
 
         #! debug
-        cv2.imshow('mask', mask*255)
-        cv2.waitKey(1)
+        # cv2.imshow('mask', mask*255)
+        # cv2.waitKey(1)
         # keypoints shape: (1, N, 2)
         keypoints_np = self.existing_keypoints.cpu().numpy()  # shape: (1, N, 2)
         keypoints_np = keypoints_np[0]  # shape: (N, 2)
@@ -106,17 +107,19 @@ class Potential2dObjects:
 class Potential2dObjectsManager:
     def __init__(self, total_classes):
         self.total_classes_number = total_classes
+        self.model_completed = False
         self.potential_objects = []
     
     def add_potential_object(self, keypoints, descriptors, init_class, init_roi_center_position_x, init_roi_center_position_y, idx):
-        potential_object = Potential2dObjects(
+        potential_object = Potential2dObject(
             self.total_classes_number,
             keypoints,
             descriptors,
             init_class,
             init_roi_center_position_x,
             init_roi_center_position_y,
-            idx
+            idx,
+            self.model_completed
         )
         self.potential_objects.append(potential_object)
     
@@ -125,6 +128,11 @@ class Potential2dObjectsManager:
     
     def get_potential_objects(self):
         return self.potential_objects
+
+    def set_model_completed(self):
+        self.model_completed = True
+        for potential_object in self.potential_objects:
+            potential_object.model_completed = True
 
 
 

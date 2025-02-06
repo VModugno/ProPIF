@@ -157,7 +157,8 @@ class Pan3D:
 
             self.hloc_cap.release()
             self.cam_loc_manager.reconstruction_3D()
-            print(f"\033[92mSuccessfully build 3D model\033[0m")
+            print(f"\033[92m============= Successfully build 3D model =============\033[0m")
+            self.featMan.set_model_completed()
         # TODO handle camera input here
         
     def LoadingYoloWorldModelWithClasses(self,device="cuda"):
@@ -223,7 +224,10 @@ class Pan3D:
                     break
                 depth_image = np.zeros_like(frame)
                 image_data = ImageData(rgb_image=frame, depth_image=depth_image, timestamp=time.time())
-                cv2.imshow("Video", frame)
+                
+                #! Debug: Show video frame by frame
+                # cv2.imshow("Video", frame)
+
                 self.images.append(image_data)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
@@ -234,13 +238,9 @@ class Pan3D:
 
                 start_time = time.time()
                 image_yolow = self.post_process_image(image_data.rgb_image)
-                # image_fast_sam_rgb = cv2.cvtColor(image_fast_sam, cv2.COLOR_BGR2RGB)
-                # cv2.imshow("Video_sam", image_fast_sam_rgb)
-                # cv2.imshow("Video_yolow", image_yolow_rgb)
                 end_time = time.time()
                 print(f"Processing time: {end_time - start_time:.2f} seconds")
                 if self.video_input:
-                    # cv2.imshow("Video_sam", image_fast_sam_rgb)
                     cv2.imshow("Video_yolow", image_yolow)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
