@@ -38,7 +38,8 @@ align_to = rs.stream.color
 align = rs.align(align_to)
 
 is_recording = False
-video_writer = None
+rgb_writer = None
+depth_file = None
 start_time = None
 
 try:
@@ -65,42 +66,42 @@ try:
 
         key = cv2.waitKey(1)
 
-        if key == ord(' '):
-            timestamp = cv2.getTickCount()
-            cv2.imwrite(f'rgb_{timestamp}.png', color_image)
-            print(f"Saved snapshot {timestamp}")
-
         if key == ord('r'):
             if not is_recording:
-                fourcc = cv2.VideoWriter_fourcc(*'XVID')
-                video_writer = cv2.VideoWriter('output.avi', fourcc, 30.0, (640, 480))
+                fourcc_rgb = cv2.VideoWriter_fourcc(*'XVID')
+                rgb_writer = cv2.VideoWriter('rgb_video.avi', fourcc_rgb, 15.0, (640, 480))
+
+                depth_file = open("depth_stream.raw", "wb")
+
                 is_recording = True
                 start_time = time.time()
-                photo_count = 0
+                photo_count = 1
                 next_photo_time = 0.0
                 print("Recording started")
             else:
-                video_writer.release()
+                rgb_writer.release()
+                depth_file.close()
                 is_recording = False
                 print("Recording stopped manually")
 
-        # Recording loop
         if is_recording:
             current_time = time.time() - start_time
-
-            if current_time <= 5.5 and photo_count < 21:
+            rgb_writer.write(color_image)
+            depth_file.write(depth_image.tobytes())
+            
+            if current_time <= 6 and photo_count <= 11:
                 if current_time >= next_photo_time:
                     cv2.imwrite(f'reference_{photo_count}.png', color_image)
                     print(f"Saved interval photo {photo_count}")
                     photo_count += 1
-                    next_photo_time = photo_count * 0.25
+                    next_photo_time = photo_count * 0.5
 
-            if current_time >= 60:
-                video_writer.release()
+
+            if time.time() - start_time >= 40:
+                rgb_writer.release()
+                depth_file.close()
                 is_recording = False
-                print("Recording stopped automatically after 60 seconds")
-
-            video_writer.write(color_image)
+                print("Recording stopped automatically")
 
         if key == ord('q'):
             break
@@ -108,6 +109,8 @@ try:
 finally:
     pipeline.stop()
     if is_recording:
-        video_writer.release()
+        rgb_writer.release()
+        depth_file.close()
     cv2.destroyAllWindows()
     print("Pipeline stopped")
+
