@@ -16,9 +16,7 @@ class Potential2dObjects:
         self.alpha = np.ones(self.total_classes_number)
         class_hot_encoding = self.class_hot_encoding(int(init_class))
         self.alpha += class_hot_encoding
-        # with pm.Model() as model:
         self.p_label = pm.Dirichlet.dist(a=np.ones(self.total_classes_number), shape=self.total_classes_number)
-        # self.model = model
         # in this attribute i want to store the last roi position in which i have seen the object
         self.last_roi_center_position = {
             'x': init_roi_center_position_x,
@@ -109,7 +107,6 @@ class Potential2dObjectsManager:
     def __init__(self, total_classes):
         self.total_classes_number = total_classes
         self.potential_objects = []
-        self.model = pm.Model()
     
     def add_potential_object(self, keypoints, descriptors, init_class, init_roi_center_position_x, init_roi_center_position_y, idx):
         potential_object = Potential2dObjects(
