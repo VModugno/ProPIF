@@ -3,7 +3,7 @@ from lightglue import LightGlue, SuperPoint
 from lightglue.utils import rbd
 import numpy as np
 import cv2
-from twoDthreeDObjects import Potential2dObjectsManager
+from twoDthreeDObjects import Potential2dObjectsManager, ThreeDObject
 from ultralytics import FastSAM
 import time
 
@@ -22,7 +22,7 @@ class FeatureManager:
         self.fast_sam_model = FastSAM('FastSAM-s.pt')
         self.fast_sam_model.model.to(self.device)
 
-    def process_new_image(self, image, rois, classes, cam_loc_manager, DEBUGWINDOWVIDEO):
+    def process_new_image(self, image, depth_image, rois, classes, cam_loc_manager, DEBUGWINDOWVIDEO):
         # Create an image where only the rois are visible
         if len(rois.images) == 0:
             print("No ROIs found.")
@@ -61,7 +61,7 @@ class FeatureManager:
                     # Check if the new features match any existing features, and update the objects stored
                     pop_idx_list += self.matching_existing_features(cur_potential_2dobject, rois)
                 #! Densify objects
-                self.check_and_densify_objects(image, rois, classes, cam_loc_manager)
+                self.check_and_densify_objects(image, depth_image, rois, classes, cam_loc_manager)
                 # Remove the ROIs that have been matched
                 pop_idx_list = list(set(pop_idx_list))
                 self.pop_rois(rois, pop_idx_list)
@@ -74,7 +74,7 @@ class FeatureManager:
                 self.store_new_2dobjects(rois)  # Store features if no existing features are present
                 print("Initial features from ROIs stored.")
     
-    def check_and_densify_objects(self, image, rois, classes, cam_loc_manager):
+    def check_and_densify_objects(self, image, depth_image, rois, classes, cam_loc_manager):
         for obj in self.objects2dMan.get_potential_objects():
             if not obj.is_filtered:
                 if obj.evaluate_model():
@@ -83,12 +83,30 @@ class FeatureManager:
                     if full_mask is not None:
                         obj.filter_SAM(full_mask)
                         cv2.imwrite('.cache/query/query.png', image)
+                        
+                        # Get the camera location
                         cam_loc = cam_loc_manager.get_cam_loc()
                         print(f'Camera location: {cam_loc.Rotation_matrix}, {cam_loc.Translation_vector}')
-                        # TODO Convert keypoints to 3D points, Store 3D objects here!!!
-                        #! plot filtered keypoints on the image, debug
-                        keypoints_np = obj.existing_keypoints.cpu().numpy()
-                        keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np[0]]
+                        
+
+                        keypoints_np = obj.existing_keypoints.cpu().numpy()  # shape: (1, N, 2)
+                        pixel_coords = keypoints_np[0]  # shape: (N, 2)
+                        
+                        intrinsics = cam_loc_manager.get_camera_intrinsics_matrix()
+                        
+                        three_d_object = ThreeDObject(depth_image, pixel_coords, 
+                                                    cam_loc.Rotation_matrix, 
+                                                    cam_loc.Translation_vector, 
+                                                    intrinsics)
+                        
+                        # Print the number of points in the 3D object
+                        num_points = len(np.asarray(three_d_object.point_cloud.points))
+                        print(f'Initialized 3D object with {num_points} points.')
+                        
+                        three_d_object.visualize()
+                        
+                        # Plot 2D keypoints on the image
+                        keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in pixel_coords]
                         image_with_keypoints = cv2.drawKeypoints(image, keypoints_cv, None, color=(0, 255, 0))
                         cv2.imshow("image_with_filtered_keypoints", image_with_keypoints)
                         cv2.waitKey(0)

@@ -236,7 +236,7 @@ class Pan3D:
                 image_data = self.images.popleft()
 
                 start_time = time.time()
-                image_yolow = self.post_process_image(image_data.rgb_image)
+                image_yolow = self.post_process_image(image_data.rgb_image, image_data.depth_image)
                 end_time = time.time()
                 print(f"Processing time: {end_time - start_time:.2f} seconds")
                 if self.video_input:
@@ -252,7 +252,7 @@ class Pan3D:
                     # rospy.logerr("Failed to convert or publish image: %s", e)
                     print("Failed to convert or publish image: %s", e)
     
-    def post_process_image(self, image):
+    def post_process_image(self, image, depth_image):
         """
         Post-process the image using the YOLO model.
         """
@@ -263,7 +263,7 @@ class Pan3D:
         for result in results:
             image_yoloW = result.plot()
             rois = self.extract_rois(image, result.boxes)
-            self.featMan.process_new_image(image, rois, self.classes, self.cam_loc_manager, DEBUGWINDOWSVIDEO)
+            self.featMan.process_new_image(image, depth_image, rois, self.classes, self.cam_loc_manager, DEBUGWINDOWSVIDEO)
 
         end_time = time.time()
         print(f"Processing time inside post_process_image: {end_time - start_time:.2f} seconds")
