@@ -1,7 +1,6 @@
 import pymc as pm
 import numpy as np
 import torch
-import cv2, time
 
 # potential object class that contains the keypoints and descriptors of the object
 class Potential2dObject:
@@ -136,6 +135,54 @@ class Potential2dObjectsManager:
 
 # once the object has been fully identified its point are stored using this class which contains the 3d point cloud of the object and the object center
 # the object center is the center of the object in the image and other information such as preshape position and oriention to interact with the object    
-class threeDObject:
-    # this class need to contains the 3d point cloud 
-    pass
+import open3d as o3d
+
+class ThreeDObject:
+    def __init__(self, depth_image, pixel_coords, rotation_matrix, translation_vector, camera_intrinsics):
+        self.point_cloud = o3d.geometry.PointCloud()
+
+        fx = camera_intrinsics[0, 0]
+        fy = camera_intrinsics[1, 1]
+        cx = camera_intrinsics[0, 2]
+        cy = camera_intrinsics[1, 2]
+        
+        points_camera = []
+        for (u, v) in pixel_coords:
+            u_int = int(round(u))
+            v_int = int(round(v))
+            if v_int < 0 or v_int >= depth_image.shape[0] or u_int < 0 or u_int >= depth_image.shape[1]:
+                continue
+            d = depth_image[v_int, u_int]
+            if d <= 0:
+                continue
+            x = (u - cx) * d / fx
+            y = (v - cy) * d / fy
+            z = d
+            points_camera.append([x, y, z])
+        points_camera = np.array(points_camera)
+
+        if points_camera.size == 0:
+            print("No depth points found for the given pixel coordinates.")
+        else:
+            # Convert points to global coordinates
+            global_points = (rotation_matrix @ points_camera.T).T + translation_vector.reshape(1, 3)
+            self.point_cloud.points = o3d.utility.Vector3dVector(global_points)
+            
+            # # Remove statistical outliers
+            cl, ind = self.point_cloud.remove_statistical_outlier(nb_neighbors=40, std_ratio=1.0)
+            self.point_cloud = self.point_cloud.select_by_index(ind)
+
+    def compute_main_plane(self, distance_threshold=0.01, ransac_n=3, num_iterations=1000):
+        if np.asarray(self.point_cloud.points).shape[0] == 0:
+            print("Error: The points cloud is empty, cannot calculate the main plane.")
+            return None, []
+
+        plane_model, inlier_indices = self.point_cloud.segment_plane(
+            distance_threshold=distance_threshold,
+            ransac_n=ransac_n,
+            num_iterations=num_iterations
+        )
+        return plane_model, inlier_indices
+
+    def visualize(self):
+        o3d.visualization.draw_geometries([self.point_cloud])
