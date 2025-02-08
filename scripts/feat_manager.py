@@ -1,9 +1,9 @@
 import torch
-from lightglue import LightGlue, SuperPoint, DISK
-from lightglue.utils import load_image, rbd
+from lightglue import LightGlue, SuperPoint
+from lightglue.utils import rbd
 import numpy as np
 import cv2
-from twoDthreeDObjects import Potential2dObjectsManager, Potential2dObjects
+from twoDthreeDObjects import Potential2dObjectsManager, ThreeDObject
 from ultralytics import FastSAM
 import time
 
@@ -22,14 +22,13 @@ class FeatureManager:
         self.fast_sam_model = FastSAM('FastSAM-s.pt')
         self.fast_sam_model.model.to(self.device)
 
-    def process_new_image(self, image, rois, classes, cam_loc_manager, DEBUGWINDOWVIDEO):
+    def process_new_image(self, image, depth_image, rois, classes, cam_loc_manager, DEBUGWINDOWVIDEO):
         # Create an image where only the rois are visible
         if len(rois.images) == 0:
             print("No ROIs found.")
         else:
-            rois_image = self.create_masked_image(image, rois)
-            rois_image_rgb = cv2.cvtColor(rois_image, cv2.COLOR_BGR2RGB)
-            rois_image_with_keypoints = rois_image_rgb.copy()
+            # rois_image = self.create_masked_image(image, rois)
+            # rois_image_with_keypoints = rois_image.copy()
 
             for idx, roi_image in enumerate(rois.images):
                 features = self.extract_features(roi_image)
@@ -45,25 +44,24 @@ class FeatureManager:
 
                 rois.add_features(features)
 
-                keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np]
-                rois_image_with_keypoints = cv2.drawKeypoints(rois_image_with_keypoints, keypoints_cv, None, color=(0, 255, 0))
+                # keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np]
+                # rois_image_with_keypoints = cv2.drawKeypoints(rois_image_with_keypoints, keypoints_cv, None, color=(0, 255, 0))
 
-            cv2.imshow("rois_image_with_keypoints", rois_image_with_keypoints)
+            #! Debug: Show the image with keypoints
+            # cv2.imshow("rois_image_with_keypoints", rois_image_with_keypoints)
             cv2.waitKey(1)
 
             #! Debug frame by frame
             if DEBUGWINDOWVIDEO:
                 input("Press Enter to continue...")
-            
             # here i check if there are existing descripotrs and keypoints
-            #! Note that is matching function will remove the roi from the list of rois
             if len(self.objects2dMan.get_potential_objects())>0:  # Only compare if there are existing features
                 pop_idx_list = []
                 for idx, cur_potential_2dobject in enumerate(self.objects2dMan.get_potential_objects()):
                     # Check if the new features match any existing features, and update the objects stored
                     pop_idx_list += self.matching_existing_features(cur_potential_2dobject, rois)
                 #! Densify objects
-                self.check_and_densify_objects(image, rois, classes, cam_loc_manager)
+                self.check_and_densify_objects(image, depth_image, rois, classes, cam_loc_manager)
                 # Remove the ROIs that have been matched
                 pop_idx_list = list(set(pop_idx_list))
                 self.pop_rois(rois, pop_idx_list)
@@ -76,8 +74,7 @@ class FeatureManager:
                 self.store_new_2dobjects(rois)  # Store features if no existing features are present
                 print("Initial features from ROIs stored.")
     
-    def check_and_densify_objects(self, image, rois, classes, cam_loc_manager):
-        print(f'length of objects list: {len(self.objects2dMan.get_potential_objects())}')
+    def check_and_densify_objects(self, image, depth_image, rois, classes, cam_loc_manager):
         for obj in self.objects2dMan.get_potential_objects():
             if not obj.is_filtered:
                 if obj.evaluate_model():
@@ -86,12 +83,30 @@ class FeatureManager:
                     if full_mask is not None:
                         obj.filter_SAM(full_mask)
                         cv2.imwrite('.cache/query/query.png', image)
+                        
+                        # Get the camera location
                         cam_loc = cam_loc_manager.get_cam_loc()
                         print(f'Camera location: {cam_loc.Rotation_matrix}, {cam_loc.Translation_vector}')
-                        # TODO Convert keypoints to 3D points, Store 3D objects here!!!
-                        #! plot filtered keypoints on the image, debug
-                        keypoints_np = obj.existing_keypoints.cpu().numpy()
-                        keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np[0]]
+                        
+
+                        keypoints_np = obj.existing_keypoints.cpu().numpy()  # shape: (1, N, 2)
+                        pixel_coords = keypoints_np[0]  # shape: (N, 2)
+                        
+                        intrinsics = cam_loc_manager.get_camera_intrinsics_matrix()
+                        
+                        three_d_object = ThreeDObject(depth_image, pixel_coords, 
+                                                    cam_loc.Rotation_matrix, 
+                                                    cam_loc.Translation_vector, 
+                                                    intrinsics)
+                        
+                        # Print the number of points in the 3D object
+                        num_points = len(np.asarray(three_d_object.point_cloud.points))
+                        print(f'Initialized 3D object with {num_points} points.')
+                        
+                        three_d_object.visualize()
+                        
+                        # Plot 2D keypoints on the image
+                        keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in pixel_coords]
                         image_with_keypoints = cv2.drawKeypoints(image, keypoints_cv, None, color=(0, 255, 0))
                         cv2.imshow("image_with_filtered_keypoints", image_with_keypoints)
                         cv2.waitKey(0)
@@ -102,7 +117,7 @@ class FeatureManager:
         roi_center_y = rois.images[obj_idx].shape[0] // 2
         roi_center_point = [roi_center_x, roi_center_y]
         roi_img = rois.images[obj_idx]
-        cur_results = self.fast_sam_model.predict(rois.images[obj_idx], retina_masks=True, conf=0.4, iou=0.5, points=[roi_center_point])
+        cur_results = self.fast_sam_model.predict(rois.images[obj_idx], retina_masks=True, conf=0.1, iou=0.2, points=[roi_center_point])
         
         combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
         for cur_result in cur_results:
@@ -187,9 +202,7 @@ class FeatureManager:
     def pop_rois(self, rois, idx_list):
         # Sort the index list in descending order to avoid shifting indices
         sorted_indices = sorted(idx_list, reverse=True)
-        print(f'Popping ROIs: {sorted_indices}')
         for idx in sorted_indices:
-            print(f'Removing ROI {idx} from list.')
             rois.images.pop(idx)
             rois.features.pop(idx)
             rois.cx.pop(idx)
@@ -198,7 +211,9 @@ class FeatureManager:
 
     def store_new_2dobjects(self,rois):
         for idx, _ in enumerate(rois.images):
-            print(f'Adding new object with class {rois.classes[idx]}')
-            if rois.classes[idx] != 3.0:
+            #! We only add flower objects for now
+            if rois.classes[idx] == 0.0:
                 self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx], idx)
 
+    def set_model_completed(self):
+        self.objects2dMan.set_model_completed()

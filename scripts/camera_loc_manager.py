@@ -6,6 +6,7 @@ from hloc.localize_sfm import QueryLocalizer, pose_from_cluster
 import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
+import os
 
 @dataclass
 class CameraLoc:
@@ -14,6 +15,14 @@ class CameraLoc:
 
 class CameraLocManager:
     def __init__(self, height, width, focal_length, center_x, center_y, k):
+        if not os.path.exists('.cache'):
+            os.makedirs('.cache')
+        if not os.path.exists('.cache/outputs'):
+            os.makedirs('.cache/outputs')
+        if not os.path.exists('.cache/mapping'):
+            os.makedirs('.cache/mapping')
+        if not os.path.exists('.cache/query'):
+            os.makedirs('.cache/query')
         self.cache_folder = Path('.cache/')
         self.outputs_folder = Path('.cache/outputs/')
         self.query_path = 'query/query.png'
@@ -64,4 +73,12 @@ class CameraLocManager:
         Rc = np.array(ret["cam_from_world"].rotation.matrix())
         tc = ret["cam_from_world"].translation
         return CameraLoc(Rotation_matrix=Rc, Translation_vector=tc)
-                
+
+    def get_camera_intrinsics_matrix(self):
+        focal_length, center_x, center_y, _ = self.camera_intrinsics
+        intrinsics = np.array([
+            [focal_length, 0, center_x],
+            [0, focal_length, center_y],
+            [0, 0, 1]
+        ])
+        return intrinsics
