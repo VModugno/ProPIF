@@ -27,7 +27,7 @@ class FeatureManager:
         if len(rois.images) == 0:
             print("No ROIs found.")
         else:
-            rois_image = self.create_masked_image(image, rois)
+            # rois_image = self.create_masked_image(image, rois)
             # rois_image_with_keypoints = rois_image.copy()
 
             for idx, roi_image in enumerate(rois.images):
@@ -54,9 +54,7 @@ class FeatureManager:
             #! Debug frame by frame
             if DEBUGWINDOWVIDEO:
                 input("Press Enter to continue...")
-            
             # here i check if there are existing descripotrs and keypoints
-            #! Note that is matching function will remove the roi from the list of rois
             if len(self.objects2dMan.get_potential_objects())>0:  # Only compare if there are existing features
                 pop_idx_list = []
                 for idx, cur_potential_2dobject in enumerate(self.objects2dMan.get_potential_objects()):
@@ -77,7 +75,6 @@ class FeatureManager:
                 print("Initial features from ROIs stored.")
     
     def check_and_densify_objects(self, image, rois, classes, cam_loc_manager):
-        print(f'length of objects list: {len(self.objects2dMan.get_potential_objects())}')
         for obj in self.objects2dMan.get_potential_objects():
             if not obj.is_filtered:
                 if obj.evaluate_model():
@@ -102,7 +99,7 @@ class FeatureManager:
         roi_center_y = rois.images[obj_idx].shape[0] // 2
         roi_center_point = [roi_center_x, roi_center_y]
         roi_img = rois.images[obj_idx]
-        cur_results = self.fast_sam_model.predict(rois.images[obj_idx], retina_masks=True, conf=0.4, iou=0.5, points=[roi_center_point])
+        cur_results = self.fast_sam_model.predict(rois.images[obj_idx], retina_masks=True, conf=0.1, iou=0.2, points=[roi_center_point])
         
         combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
         for cur_result in cur_results:
@@ -187,9 +184,7 @@ class FeatureManager:
     def pop_rois(self, rois, idx_list):
         # Sort the index list in descending order to avoid shifting indices
         sorted_indices = sorted(idx_list, reverse=True)
-        print(f'Popping ROIs: {sorted_indices}')
         for idx in sorted_indices:
-            print(f'Removing ROI {idx} from list.')
             rois.images.pop(idx)
             rois.features.pop(idx)
             rois.cx.pop(idx)
@@ -198,8 +193,8 @@ class FeatureManager:
 
     def store_new_2dobjects(self,rois):
         for idx, _ in enumerate(rois.images):
-            print(f'Adding new object with class {rois.classes[idx]}')
-            if rois.classes[idx] != 3.0:
+            #! We only add flower objects for now
+            if rois.classes[idx] == 0.0:
                 self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx], idx)
 
     def set_model_completed(self):
