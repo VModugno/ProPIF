@@ -94,6 +94,8 @@ class Pan3D:
             
             # HLOC video stream
             self.hloc_cap = cv2.VideoCapture(video_path)
+            if not self.hloc_cap.isOpened():
+                raise ValueError(f"Error opening hloc video file: {video_path}")
 
             self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
             self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
