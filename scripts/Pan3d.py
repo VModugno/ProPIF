@@ -40,7 +40,7 @@ class Pan3D:
         # Create CvBridge to convert ROS images to OpenCV format
         self.bridge = CvBridge()
         
-        # Initialize camera info
+        # Initialize camera info, mm
         self.focal_length = 427.03
         self.center_x = 315.78
         self.center_y = 240.92
@@ -66,9 +66,6 @@ class Pan3D:
             self.k = 0.0
             self.cam_width = color_intrin.width
             self.cam_height = color_intrin.height
-        
-        # Initialize the camera location manager
-        self.cam_loc_manager = CameraLocManager(self.cam_height, self.cam_width, self.focal_length, self.center_x, self.center_y, self.k)
         
         # Initialize subscribers
         if not self.video_input:
@@ -138,6 +135,14 @@ class Pan3D:
     
     def Build3DModel(self):
         print("Building 3D model...")
+        if not os.path.exists('.cache'):
+            os.makedirs('.cache')
+        if not os.path.exists('.cache/outputs'):
+            os.makedirs('.cache/outputs')
+        if not os.path.exists('.cache/mapping'):
+            os.makedirs('.cache/mapping')
+        if not os.path.exists('.cache/query'):
+            os.makedirs('.cache/query')
         if self.video_input:
             image_count = 0
             frame_count = 0
@@ -155,6 +160,8 @@ class Pan3D:
                 frame_count += 1
 
             self.hloc_cap.release()
+            
+            self.cam_loc_manager = CameraLocManager(self.cam_height, self.cam_width, self.focal_length, self.center_x, self.center_y, self.k)
             self.cam_loc_manager.reconstruction_3D()
             print("\033[92m============= Successfully build 3D model =============\033[0m")
             self.featMan.set_model_completed()
