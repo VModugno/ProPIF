@@ -152,12 +152,13 @@ class ThreeDObject:
             v_int = int(round(v))
             if v_int < 0 or v_int >= depth_image.shape[0] or u_int < 0 or u_int >= depth_image.shape[1]:
                 continue
-            d = depth_image[v_int, u_int]
-            if d <= 0:
+            d_mm = depth_image[v_int, u_int]
+            if d_mm <= 0:
                 continue
-            x = (u - cx) * d / fx
-            y = (v - cy) * d / fy
-            z = d
+            d_in_m = d_mm * 0.001
+            x = (u - cx) * d_in_m / fx
+            y = (v - cy) * d_in_m / fy
+            z = d_in_m
             points_camera.append([x, y, z])
         points_camera = np.array(points_camera)
 
@@ -173,16 +174,41 @@ class ThreeDObject:
             self.point_cloud = self.point_cloud.select_by_index(ind)
 
     def compute_main_plane(self, distance_threshold=0.01, ransac_n=3, num_iterations=1000):
-        if np.asarray(self.point_cloud.points).shape[0] == 0:
+        """
+        Return:
+            normal: The normal vector of the main plane.
+            centroid: The centroid of the main plane.
+        """
+        points_array = np.asarray(self.point_cloud.points)
+        if points_array.shape[0] == 0:
             print("Error: The points cloud is empty, cannot calculate the main plane.")
-            return None, []
+            return None, None
 
         plane_model, inlier_indices = self.point_cloud.segment_plane(
             distance_threshold=distance_threshold,
             ransac_n=ransac_n,
             num_iterations=num_iterations
         )
-        return plane_model, inlier_indices
+
+        if len(inlier_indices) == 0:
+            print("No inliers found for the plane.")
+            return None, None
+
+        # plane_model = [a, b, c, d], ax + by + cz + d = 0
+        a, b, c, d = plane_model
+
+        normal = np.array([a, b, c], dtype=np.float64)
+        norm_len = np.linalg.norm(normal)
+        if norm_len < 1e-6:
+            print("Invalid plane normal.")
+            return None, None
+        normal = normal / norm_len
+
+        inlier_points = points_array[inlier_indices]
+        centroid = inlier_points.mean(axis=0)
+
+        return normal, centroid
+
 
     def visualize(self):
         o3d.visualization.draw_geometries([self.point_cloud])

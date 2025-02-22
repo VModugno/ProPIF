@@ -6,7 +6,6 @@ import os
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 #import pygame
-import queue
 import cv2
 import message_filters
 from dataclasses import dataclass
@@ -16,7 +15,6 @@ import torch
 import pyrealsense2 as rs
 import time
 import av  # PyAV for 16-bit depth video
-import sys
 
 # local classes
 from roi import Rois as roi
@@ -37,6 +35,8 @@ class Pan3D(Node):
     def __init__(self, classes, max_length=1000, video_input=False, video_path=None, depth_vid_path=None, start_minute=0, device="cuda"):
         # rospy.init_node('ThreeDPan', anonymous=True)
         super().__init__('three_d_pan')
+        
+        self.detected_planes = []
 
         self.video_input = video_input
         self.running = True
@@ -272,7 +272,14 @@ class Pan3D(Node):
         for result in results:
             image_yoloW = result.plot()
             rois = self.extract_rois(image, result.boxes)
-            self.featMan.process_new_image(image, depth_image, rois, self.classes, self.cam_loc_manager, DEBUGWINDOWSVIDEO)
+            plane_info_list = self.featMan.process_new_image(
+                image, depth_image, rois, 
+                self.classes, 
+                self.cam_loc_manager, 
+                DEBUGWINDOWSVIDEO
+            )
+            if plane_info_list:
+                self.detected_planes.extend(plane_info_list)  
 
         end_time = time.time()
         print(f"Processing time inside post_process_image: {end_time - start_time:.2f} seconds")
@@ -307,6 +314,13 @@ class Pan3D(Node):
             cls.append(cls_cur)
         rois = roi(images, x1, y1, x2, y2, cls)
         return rois
+    
+    def remove_plane_by_id(self, plane_id):
+        self.detected_planes = [
+            p for p in self.detected_planes 
+            if p.object_idx != plane_id
+        ]
+
 
     def run(self):
         self.processing_thread.start()
