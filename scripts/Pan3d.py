@@ -1,4 +1,5 @@
-import rospy
+import rclpy
+from rclpy.node import Node
 import threading
 import numpy as np
 import os
@@ -32,9 +33,11 @@ class ImageData:
     depth_image: np.ndarray
     timestamp: float  # Assuming timestamp is required
 
-class Pan3D:
+class Pan3D(Node):
     def __init__(self, classes, max_length=1000, video_input=False, video_path=None, depth_vid_path=None, start_minute=0, device="cuda"):
         # rospy.init_node('ThreeDPan', anonymous=True)
+        super().__init__('three_d_pan')
+
         self.video_input = video_input
         self.running = True
         # Create CvBridge to convert ROS images to OpenCV format
@@ -69,8 +72,8 @@ class Pan3D:
         
         # Initialize subscribers
         if not self.video_input:
-            self.color_sub = message_filters.Subscriber("/camera/color/image_raw", Image)
-            self.depth_sub = message_filters.Subscriber("/camera/depth/image_rect_raw", Image)
+            self.color_sub = message_filters.Subscriber(self, Image, "/camera/color/image_raw", 10)
+            self.depth_sub = message_filters.Subscriber(self, Image, "/camera/depth/image_rect_raw", 10)
             self.ts = message_filters.TimeSynchronizer([self.color_sub, self.depth_sub], 10)
             self.ts.registerCallback(self.image_callback)
         else:
@@ -103,9 +106,8 @@ class Pan3D:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         # End video_input branch
         
-        # Initialize publisher
-        # self.processed_image_yolow_pub = rospy.Publisher("/processed_image_yolow", Image, queue_size=10)
-        # self.processed_image_fastsam_pub = rospy.Publisher("/processed_image_fastSAM", Image, queue_size=10)
+        # Initialize publishers
+        self.processed_image_yolow_pub = self.create_publisher(Image, "/processed_image_yolow", 10)
         
         # Initialize image deque
         self.images = deque(maxlen=max_length)
@@ -310,12 +312,13 @@ class Pan3D:
         self.processing_thread.start()
         self.hloc_thread.start()
         # self.keyboard_thread.start()
-        # Use rospy.spin() to keep your node alive and handle callbacks
-        # rospy.spin()
+
+        rclpy.spin(self)
         # pygame.quit()
         # self.keyboard_thread.join()
         self.hloc_thread.join()
         self.processing_thread.join()
+        rclpy.shutdown()
 
     def cleanup(self):
         # Clean up and close the window when done

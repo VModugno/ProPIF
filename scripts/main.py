@@ -20,7 +20,7 @@
 
 import os
 from Pan3d import Pan3D
-import rospy
+import rclpy
 
 # video source
 classes= ["flower", "leaf", "tree", "plant", ""]
@@ -36,10 +36,16 @@ depth_vid_path = os.path.join(os.getcwd(),"video", depth_vid_name)
 
 if __name__ == '__main__':
     try:
+        rclpy.init()
+
         # extract paht of the current video from a folder called video inside the current folder
         # with os module 
-        threedPan = Pan3D(classes, video_input=video_input, video_path=vid_path, depth_vid_path=depth_vid_path, start_minute=0)
+        threedPan = Pan3D(classes, video_input=video_input,
+                          video_path=vid_path, depth_vid_path=depth_vid_path, 
+                          start_minute=0)
         threedPan.run()
         threedPan.cleanup()
-    except rospy.ROSInterruptException:
-        rospy.loginfo("Image Processor node terminated.")
+
+        rclpy.shutdown()
+    except KeyboardInterrupt:
+        print("Image Processor node terminated (KeyboardInterrupt).")
