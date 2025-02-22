@@ -1,27 +1,32 @@
-name: pan_seg_3d
+name: propif_ros2
 channels:
-- conda-forge
-- robostack-staging
+  - conda-forge
+  - robostack-staging
 dependencies:
-- python=3.9
-- yaml-cpp
-- pip
-- numpy
-- matplotlib
-- scipy
-- rospkg
-- pybind11
-- urdfdom
-- ros-noetic-ros-base
-- ros-noetic-tf2-msgs
-- ros-noetic-rqt-plot
-- ros-noetic-rqt-image-view
-- ros-noetic-joint-state-publisher
-- ros-noetic-cv-bridge
-- ros-noetic-realsense2-camera
-- catkin_tools
-- pygame
-- pip:
-  - open3d
-  - ultralytics
-  - pymc
+  - python=3.11
+  - yaml-cpp
+  - pip
+  - numpy
+  - av
+  - matplotlib
+  - scipy
+  - pybind11
+  - pyrealsense2
+  - urdfdom
+  - ros-humble-ros-base
+  - ros-humble-tf2-msgs
+  - ros-humble-cv-bridge
+  - ros-humble-realsense2-camera
+  - ros-humble-rqt
+  - ros-humble-rqt-plot
+  - ros-humble-rqt-image-view
+  - ros-humble-joint-state-publisher
+  - ros-humble-ros2launch
+  - ros-humble-vision-msgs
+  - ros-humble-message-filters
+  - ros-humble-image-transport
+  - pygame
+  - pip:
+      - open3d
+      - ultralytics
+      - pymc
