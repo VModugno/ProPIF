@@ -3,15 +3,20 @@
 <package format="3">
   <name>propif_perception</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="steveyang520314@gmail.com">steve</maintainer>
+  <description>Flower perception package for ProPIF</description>
+  <maintainer email="your.email@example.com">steve</maintainer>
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
   <depend>propif_msgs</depend>
   <depend>cv_bridge</depend>
+  <depend>std_srvs</depend>
+  <depend>python3-opencv</depend>
+  <depend>python3-numpy</depend>
+  <depend>python3-torch</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

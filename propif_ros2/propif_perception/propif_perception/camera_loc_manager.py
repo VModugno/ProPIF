@@ -34,12 +34,29 @@ class CameraLocManager:
         self.camera_intrinsics = [focal_length, center_x, center_y, k]
         
         self.model = None
+
+        os.makedirs(self.cache_folder, exist_ok=True)
+        os.makedirs(self.outputs_folder, exist_ok=True)
+        os.makedirs(self.cache_folder / 'mapping', exist_ok=True)
+        os.makedirs(Path('query'), exist_ok=True)
+
+        self.references = []
+        mapping_dir = self.cache_folder / 'mapping'
+        if mapping_dir.exists():
+            self.references = [str(p.relative_to(self.cache_folder)) 
+                            for p in mapping_dir.iterdir() 
+                            if p.is_file()]
     
     def reconstruction_3D(self):
-        extract_features.main(self.feature_conf, self.cache_folder, image_list=self.references, feature_path=self.features)
-        pairs_from_exhaustive.main(self.sfm_pairs, image_list=self.references)
-        match_features.main(self.matcher_conf, self.sfm_pairs, features=self.features, matches=self.matches)
-        self.model = reconstruction.main(self.sfm_dir, self.cache_folder, self.sfm_pairs, self.features, self.matches, image_list=self.references)
+        try:
+            extract_features.main(self.feature_conf, self.cache_folder, image_list=self.references, feature_path=self.features)
+            pairs_from_exhaustive.main(self.sfm_pairs, image_list=self.references)
+            match_features.main(self.matcher_conf, self.sfm_pairs, features=self.features, matches=self.matches)
+            self.model = reconstruction.main(self.sfm_dir, self.cache_folder, self.sfm_pairs, self.features, self.matches, image_list=self.references)
+            return True
+        except Exception as e:
+            print(f"Error during 3D reconstruction: {e}")
+            return False
         
     def get_cam_loc(self):
         references_registered = [self.model.images[i].name for i in self.model.reg_image_ids()]
