@@ -106,13 +106,16 @@ class ControlNode(Node):
     def setup_robot_control(self):
         """Initialize robot control components"""
         try:
-            # Find the configuration file path
-            root_dir = os.path.dirname(os.path.abspath(__file__))
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # config directory
+            config_dir = os.path.abspath(os.path.join(current_dir, '../../config'))
+            
+            self.get_logger().info(f'Looking for robot config at: {os.path.join(config_dir, self.robot_config)}')
             
             # Initialize simulation interface
             self.sim = pb.SimInterface(
                 self.robot_config, 
-                conf_file_path_ext=root_dir
+                conf_file_path_ext=config_dir
             )
             
             # Get active joint names
@@ -128,7 +131,7 @@ class ControlNode(Node):
                 source_names, 
                 False, 
                 0,
-                root_dir
+                config_dir
             )
             
             # Get robot configuration
