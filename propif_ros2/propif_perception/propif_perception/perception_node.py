@@ -1,24 +1,25 @@
-#!/usr/bin/env python3
-
 import rclpy
 from rclpy.node import Node
 import cv2
 import os
+import numpy as np
 from pathlib import Path
 from sensor_msgs.msg import Image, CameraInfo, JointState
 from propif_msgs.msg import PlaneInfo
 from visualization_msgs.msg import MarkerArray, Marker
-from geometry_msgs.msg import Point, Vector3, Pose
+from geometry_msgs.msg import Point, Vector3, Pose, TransformStamped, Quaternion
 from cv_bridge import CvBridge
 from ultralytics import YOLOWorld as YOLO
 from std_srvs.srv import Trigger
 import time
 import torch
+import tf2_ros
+from tf2_geometry_msgs import do_transform_pose
 
 # local classes
 from roi import Rois
 from feat_manager import FeatureManager
-from camera_loc_manager import CameraLocManager
+from camera_loc_manager import CameraLocManager, CameraLoc
 
 class PerceptionNode(Node):
     def __init__(self):
@@ -29,12 +30,14 @@ class PerceptionNode(Node):
         self.declare_parameter('debug_windows', False)
         self.declare_parameter('use_sfm_reconstruction', False)  # Plan B: Use SFM reconstruction instead of direct pose
         self.declare_parameter('reconstruction_image_count', 10)  # Number of images to collect for reconstruction
+        self.declare_parameter('frame_id', 'map')  # Frame ID for publishing visualization markers
         
         # Get parameters
         self.classes = self.get_parameter('classes').value
         self.debug_windows = self.get_parameter('debug_windows').value
         self.use_sfm_reconstruction = self.get_parameter('use_sfm_reconstruction').value
         self.reconstruction_image_count = self.get_parameter('reconstruction_image_count').value
+        self.frame_id = self.get_parameter('frame_id').value
 
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -44,8 +47,13 @@ class PerceptionNode(Node):
         # Create CvBridge to convert ROS images to OpenCV format
         self.bridge = CvBridge()
         
-        # Initialize camera location manager and state variables
-        self.cam_loc_manager = None
+        # Initialize camera parameters
+        self.camera_intrinsics = None
+        self.rotation_matrix = None
+        self.translation_vector = None
+        self.cam_loc_manager = None  # Still needed for SFM mode
+        
+        # Initialize state variables
         self.sfm_initialized = False
         self.collected_images_count = 0
         self.collection_mode = self.use_sfm_reconstruction  # Start in collection mode if using SFM
@@ -53,6 +61,10 @@ class PerceptionNode(Node):
         # Create directories for SFM reconstruction if needed
         if self.use_sfm_reconstruction:
             self.setup_sfm_directories()
+        
+        # Setup TF2 listener for Plan A
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         
         # Create subscribers
         self.create_subscription(Image, '/camera/color/image_raw', self.color_callback, 10)
@@ -71,7 +83,6 @@ class PerceptionNode(Node):
         # Store latest images
         self.latest_color = None
         self.latest_depth = None
-        self.camera_pose = None  # For Plan A
         
         # Initialize YOLO model and feature manager
         self.load_yolo_model()
@@ -90,10 +101,9 @@ class PerceptionNode(Node):
             self.get_logger().info(f'Collect {self.reconstruction_image_count} images for reconstruction')
         else:
             self.get_logger().info('Using direct camera pose mode (Plan A)')
-        
+    
     def setup_sfm_directories(self):
         """Setup directories for SFM reconstruction"""
-        # Create cache directories for SFM
         os.makedirs('.cache/', exist_ok=True)
         os.makedirs('.cache/outputs/', exist_ok=True)
         os.makedirs('.cache/mapping/', exist_ok=True)
@@ -134,34 +144,124 @@ class PerceptionNode(Node):
                 self.get_logger().error(f'Failed to perform 3D reconstruction: {str(e)}')
         
         response.success = True
-        response.message = f"Switched to {mode} mode"
+        response.message = f"Switched to {mode} mode. Images: {self.collected_images_count}/{self.reconstruction_image_count}"
         return response
     
     def camera_info_callback(self, msg):
         """Process camera calibration information"""
-        if self.cam_loc_manager is None:
+        if self.camera_intrinsics is None:
             self.get_logger().info('Received camera info')
-            self.cam_loc_manager = CameraLocManager(
-                msg.height, 
-                msg.width,
-                msg.k[0],  # fx
-                msg.k[2],  # cx
-                msg.k[5],  # cy
-                0.0  # k
-            )
             
-            # Only perform reconstruction_3D for Plan A
-            if not self.use_sfm_reconstruction:
-                self.cam_loc_manager.reconstruction_3D()
-                self.sfm_initialized = True
-                
-            self.get_logger().info('Camera location manager initialized')
+            # Extract camera intrinsics matrix
+            fx = msg.k[0]
+            fy = msg.k[4]
+            cx = msg.k[2]
+            cy = msg.k[5]
+            self.camera_intrinsics = np.array([
+                [fx, 0, cx],
+                [0, fy, cy],
+                [0, 0, 1]
+            ])
+            
+            # For Plan B (SFM), still need CameraLocManager
+            if self.use_sfm_reconstruction:
+                self.cam_loc_manager = CameraLocManager(
+                    msg.height, 
+                    msg.width,
+                    fx, cx, cy, 0.0
+                )
+            
+            self.get_logger().info('Camera intrinsics initialized')
+    
+    def quaternion_to_rotation_matrix(self, q):
+        """Convert quaternion to 3x3 rotation matrix"""
+        # Extract quaternion components
+        x, y, z, w = q.x, q.y, q.z, q.w
+        
+        # Compute rotation matrix elements
+        xx = x * x
+        xy = x * y
+        xz = x * z
+        xw = x * w
+        
+        yy = y * y
+        yz = y * z
+        yw = y * w
+        
+        zz = z * z
+        zw = z * w
+        
+        # Form the rotation matrix
+        rot_matrix = np.array([
+            [1 - 2 * (yy + zz), 2 * (xy - zw), 2 * (xz + yw)],
+            [2 * (xy + zw), 1 - 2 * (xx + zz), 2 * (yz - xw)],
+            [2 * (xz - yw), 2 * (yz + xw), 1 - 2 * (xx + yy)]
+        ])
+        
+        return rot_matrix
+    
+    def compute_orientation_from_normal(self, normal):
+        """Compute quaternion orientation from normal vector"""
+        # Normalize the vector
+        norm = np.linalg.norm(normal)
+        if norm < 1e-6:
+            # If normal is too small, return identity quaternion
+            return Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
+            
+        normal = normal / norm
+        
+        # Find rotation from [0,0,1] to normal
+        z_axis = np.array([0, 0, 1])
+        
+        # Handle special case when normal is parallel to z-axis
+        if np.abs(np.dot(normal, z_axis) - 1.0) < 1e-6:
+            return Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
+        elif np.abs(np.dot(normal, z_axis) + 1.0) < 1e-6:
+            return Quaternion(w=0.0, x=1.0, y=0.0, z=0.0)
+        
+        # Compute the rotation axis (cross product)
+        axis = np.cross(z_axis, normal)
+        axis = axis / np.linalg.norm(axis)
+        
+        # Compute the rotation angle
+        angle = np.arccos(np.clip(np.dot(z_axis, normal), -1.0, 1.0))
+        
+        # Convert axis-angle to quaternion
+        sin_half_angle = np.sin(angle/2)
+        cos_half_angle = np.cos(angle/2)
+        
+        quat = Quaternion()
+        quat.x = axis[0] * sin_half_angle
+        quat.y = axis[1] * sin_half_angle
+        quat.z = axis[2] * sin_half_angle
+        quat.w = cos_half_angle
+        
+        return quat
     
     def joint_state_callback(self, msg):
         """Process joint states to get end effector pose (Plan A)"""
-        # This would typically come from forward kinematics or a tf lookup
-        # Placeholder - in a real system you'd compute the camera pose from joint states
-        self.camera_pose = Pose()  # This would be populated with actual pose data
+        if not self.use_sfm_reconstruction:
+            try:
+                # Try to get transform from camera to world with timeout
+                transform = self.tf_buffer.lookup_transform(
+                    'world',
+                    'camera_link',
+                    rclpy.time.Time(),
+                    timeout=rclpy.duration.Duration(seconds=1.0)
+                )
+                
+                # Extract rotation and translation
+                q = transform.transform.rotation
+                t = transform.transform.translation
+                
+                # Convert quaternion to rotation matrix
+                self.rotation_matrix = self.quaternion_to_rotation_matrix(q)
+                self.translation_vector = np.array([t.x, t.y, t.z])
+                
+                self.get_logger().debug('Updated camera pose from TF')
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, 
+                    tf2_ros.ExtrapolationException, tf2_ros.TimeoutException) as e:
+                self.get_logger().warning(f'Could not get camera transform: {e}')
     
     def color_callback(self, msg):
         """Process incoming color images"""
@@ -198,14 +298,40 @@ class PerceptionNode(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to process depth image: {str(e)}')
     
+    def get_camera_pose(self):
+        """Get current camera pose based on mode (Plan A or B)"""
+        if self.use_sfm_reconstruction:
+            # For Plan B: Use SFM to get camera pose
+            if not self.sfm_initialized:
+                return None, None
+            
+            # Save current image as query for localization
+            if self.latest_color is not None:
+                cv2.imwrite('query/query.png', self.latest_color)
+                
+            # Get camera location from SFM
+            try:
+                cam_loc = self.cam_loc_manager.get_cam_loc()
+                return cam_loc.Rotation_matrix, cam_loc.Translation_vector
+            except Exception as e:
+                self.get_logger().error(f'Error getting camera pose from SFM: {str(e)}')
+                return None, None
+        else:
+            # For Plan A: Use TF/robot state to get camera pose
+            return self.rotation_matrix, self.translation_vector
+    
     def process_images(self):
         """Main image processing loop"""
         # Skip processing if we're still collecting images or don't have necessary data
-        if self.collection_mode or self.latest_color is None or self.latest_depth is None or self.cam_loc_manager is None:
+        if (self.collection_mode or 
+            self.latest_color is None or 
+            self.latest_depth is None or 
+            self.camera_intrinsics is None):
             return
         
-        # For Plan B, we need SFM to be initialized
-        if self.use_sfm_reconstruction and not self.sfm_initialized:
+        # Get camera pose based on current mode
+        rotation_matrix, translation_vector = self.get_camera_pose()
+        if rotation_matrix is None or translation_vector is None:
             return
             
         try:
@@ -213,13 +339,6 @@ class PerceptionNode(Node):
             color_image = self.latest_color.copy()
             depth_image = self.latest_depth.copy()
             
-            # For Plan B: Get camera pose using SFM
-            if self.use_sfm_reconstruction:
-                # Save current image as query for localization
-                cv2.imwrite('query/query.png', color_image)
-                camera_loc = self.cam_loc_manager.get_cam_loc()
-                # Now we have camera_loc.Rotation_matrix and camera_loc.Translation_vector
-                
             # Process with YOLO
             results = self.yolo_model.predict(color_image, conf=0.1, iou=0.3, max_det=100)
             
@@ -227,13 +346,15 @@ class PerceptionNode(Node):
                 processed_img = result.plot()
                 rois = self.extract_rois(color_image, result.boxes)
                 
-                # Process detected ROIs
+                # Process detected ROIs - now passing camera pose directly
                 plane_info_list = self.featMan.process_new_image(
                     color_image, 
                     depth_image, 
                     rois,
                     self.classes,
-                    self.cam_loc_manager,
+                    rotation_matrix, 
+                    translation_vector,
+                    self.camera_intrinsics,
                     self.debug_windows
                 )
                 
@@ -293,7 +414,7 @@ class PerceptionNode(Node):
         for i, plane in enumerate(plane_info_list):
             # Create centroid marker (sphere)
             centroid_marker = Marker()
-            centroid_marker.header.frame_id = "camera_link"
+            centroid_marker.header.frame_id = self.frame_id
             centroid_marker.header.stamp = self.get_clock().now().to_msg()
             centroid_marker.ns = "plane_centroids"
             centroid_marker.id = plane.object_idx
@@ -315,7 +436,7 @@ class PerceptionNode(Node):
             
             # Create normal vector marker (arrow)
             normal_marker = Marker()
-            normal_marker.header.frame_id = "camera_link"
+            normal_marker.header.frame_id = self.frame_id
             normal_marker.header.stamp = self.get_clock().now().to_msg()
             normal_marker.ns = "plane_normals"
             normal_marker.id = plane.object_idx
@@ -327,7 +448,8 @@ class PerceptionNode(Node):
             normal_marker.pose.position.z = float(plane.centroid[2])
             
             # Set orientation based on normal vector
-            normal_marker.pose.orientation.w = 1.0
+            orientation = self.compute_orientation_from_normal(plane.normal)
+            normal_marker.pose.orientation = orientation
             
             normal_marker.scale.x = 0.2  # arrow length
             normal_marker.scale.y = 0.02  # arrow width

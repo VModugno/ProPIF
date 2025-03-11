@@ -28,15 +28,13 @@ class FeatureManager:
         self.fast_sam_model = FastSAM('FastSAM-s.pt')
         self.fast_sam_model.model.to(self.device)
 
-    def process_new_image(self, image, depth_image, rois, classes, cam_loc_manager, DEBUGWINDOWVIDEO):
+    def process_new_image(self, image, depth_image, rois, classes, rotation_matrix, translation_vector, camera_intrinsics, DEBUGWINDOWVIDEO):
         plane_info_list = []
 
         if len(rois.images) == 0:
             print("No ROIs found.")
         else:
-            # rois_image = self.create_masked_image(image, rois)
-            # rois_image_with_keypoints = rois_image.copy()
-
+            # Extract features from ROIs
             for idx, roi_image in enumerate(rois.images):
                 features = self.extract_features(roi_image)
         
@@ -51,25 +49,21 @@ class FeatureManager:
 
                 rois.add_features(features)
 
-                # keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in keypoints_np]
-                # rois_image_with_keypoints = cv2.drawKeypoints(rois_image_with_keypoints, keypoints_cv, None, color=(0, 255, 0))
-
-            #! Debug: Show the image with keypoints
-            # cv2.imshow("rois_image_with_keypoints", rois_image_with_keypoints)
             cv2.waitKey(1)
 
-            #! Debug frame by frame
             if DEBUGWINDOWVIDEO:
                 input("Press Enter to continue...")
-            # here i check if there are existing descripotrs and keypoints
+                
+            # Process existing objects
             if len(self.objects2dMan.get_potential_objects()) > 0:  # Only compare if there are existing features
                 pop_idx_list = []
                 for idx, cur_potential_2dobject in enumerate(self.objects2dMan.get_potential_objects()):
                     # Check if the new features match any existing features, and update the objects stored
                     pop_idx_list += self.matching_existing_features(cur_potential_2dobject, rois)
 
-                #! Densify objects & get 3D data
-                plane_info_list = self.convert_to_3d(image, depth_image, rois, classes, cam_loc_manager)
+                # Get 3D data with direct camera pose parameters
+                plane_info_list = self.convert_to_3d(image, depth_image, rois, classes, 
+                                                   rotation_matrix, translation_vector, camera_intrinsics)
 
                 # Remove the ROIs that have been matched
                 pop_idx_list = list(set(pop_idx_list))
@@ -87,33 +81,28 @@ class FeatureManager:
         return plane_info_list
 
     
-    def convert_to_3d(self, image, depth_image, rois, classes, cam_loc_manager):
+    def convert_to_3d(self, image, depth_image, rois, classes, rotation_matrix, translation_vector, camera_intrinsics):
         plane_info_list = []
         for obj in self.objects2dMan.get_potential_objects():
             if obj.is_filtered:
                 continue
             if not obj.evaluate_model():
                 continue
+                
             obj_idx = obj.get_idx()
             full_mask = self.generate_combined_mask_for_object(rois, image, classes, obj_idx)
             if full_mask is not None:
                 obj.filter_SAM(full_mask)
                 cv2.imwrite('.cache/query/query.png', image)
-                        
-            # Get the camera location
-            cam_loc = cam_loc_manager.get_cam_loc()
-            print(f'Camera location: {cam_loc.Rotation_matrix}, {cam_loc.Translation_vector}')
-                        
 
             keypoints_np = obj.existing_keypoints.cpu().numpy()  # shape: (1, N, 2)
             pixel_coords = keypoints_np[0]  # shape: (N, 2)
             
-            intrinsics = cam_loc_manager.get_camera_intrinsics_matrix()
-            
+            # Use provided camera intrinsics directly
             three_d_object = ThreeDObject(depth_image, pixel_coords, 
-                                        cam_loc.Rotation_matrix, 
-                                        cam_loc.Translation_vector, 
-                                        intrinsics)
+                                        rotation_matrix, 
+                                        translation_vector, 
+                                        camera_intrinsics)
             normal, centroid = three_d_object.compute_main_plane()
             if normal is not None and centroid is not None:
                 info = PlaneInfo(
@@ -122,16 +111,6 @@ class FeatureManager:
                     centroid=centroid
                 )
                 plane_info_list.append(info)
-
-            #! Debug: Visualize the 3D object
-            # print(f'Normal: {normal}, Centroid: {centroid}')
-            # three_d_object.visualize()
-            
-            #! Debug: Plot 2D keypoints on the image
-            # keypoints_cv = [cv2.KeyPoint(x=float(kp[0]), y=float(kp[1]), size=1) for kp in pixel_coords]
-            # image_with_keypoints = cv2.drawKeypoints(image, keypoints_cv, None, color=(0, 255, 0))
-            # cv2.imshow("image_with_filtered_keypoints", image_with_keypoints)
-            # cv2.waitKey(0)
         
         return plane_info_list
 
