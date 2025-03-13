@@ -3,7 +3,7 @@ from lightglue import LightGlue, SuperPoint
 from lightglue.utils import rbd
 import numpy as np
 import cv2
-from twoDthreeDObjects import Potential2dObjectsManager, ThreeDObject
+from propif_perception.twoDthreeDObjects import Potential2dObjectsManager, ThreeDObject
 from ultralytics import FastSAM
 from dataclasses import dataclass
 

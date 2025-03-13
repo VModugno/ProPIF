@@ -99,23 +99,28 @@ class ControlNode(Node):
         self.control_timer = self.create_timer(control_period, self.control_loop)
         
         # Create a one-shot timer for initialization sequence
-        self.create_timer(1.0, self.initialization_sequence, oneshot=True)
+        self.init_timer = self.create_timer(1.0, self.initialization_sequence_wrapper)
         
         self.get_logger().info('Control node initialized')
+    
+    def initialization_sequence_wrapper(self):
+        """Wrapper for one-time execution of initialization sequence"""
+        self.initialization_sequence()
+        self.init_timer.cancel()
 
     def setup_robot_control(self):
         """Initialize robot control components"""
         try:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
             # config directory
-            config_dir = os.path.abspath(os.path.join(current_dir, '../../config'))
+            config_dir = "/home/steve/UCL_RAI/ProPIF" 
             
             self.get_logger().info(f'Looking for robot config at: {os.path.join(config_dir, self.robot_config)}')
             
             # Initialize simulation interface
             self.sim = pb.SimInterface(
                 self.robot_config, 
-                conf_file_path_ext=config_dir
+                conf_file_path_ext=config_dir,
+                use_gui=False
             )
             
             # Get active joint names

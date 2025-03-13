@@ -17,9 +17,9 @@ import tf2_ros
 from tf2_geometry_msgs import do_transform_pose
 
 # local classes
-from roi import Rois
-from feat_manager import FeatureManager
-from camera_loc_manager import CameraLocManager, CameraLoc
+from propif_perception.roi import Rois
+from propif_perception.feat_manager import FeatureManager
+from propif_perception.camera_loc_manager import CameraLocManager
 
 class PerceptionNode(Node):
     def __init__(self):
@@ -327,44 +327,62 @@ class PerceptionNode(Node):
             self.latest_color is None or 
             self.latest_depth is None or 
             self.camera_intrinsics is None):
+            self.get_logger().error(f'There is missing data, skipping processing')
             return
         
         # Get camera pose based on current mode
         rotation_matrix, translation_vector = self.get_camera_pose()
         if rotation_matrix is None or translation_vector is None:
+            # self.get_logger().error(f'There was an error getting camera pose, skipping processing')
             return
             
         try:
-            # Make copies to avoid concurrency issues
             color_image = self.latest_color.copy()
             depth_image = self.latest_depth.copy()
             
-            # Process with YOLO
+            #! Debug: Show camera feed
+            cv2.namedWindow('Camera Feed', cv2.WINDOW_NORMAL)
+            cv2.resizeWindow('Camera Feed', 640, 480)
+            cv2.imshow('Camera Feed', color_image)
+            # Depth
+            if self.latest_depth is not None:
+                depth_display = cv2.normalize(depth_image, None, 0, 255, 
+                                            cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+                depth_colormap = cv2.applyColorMap(depth_display, cv2.COLORMAP_JET)
+                
+                cv2.namedWindow('Depth Map', cv2.WINDOW_NORMAL)
+                cv2.resizeWindow('Depth Map', 640, 480)
+                cv2.imshow('Depth Map', depth_colormap)
+            
+            # YOLO object detection
             results = self.yolo_model.predict(color_image, conf=0.1, iou=0.3, max_det=100)
+            self.get_logger().info(f'YOLO found {len(results)} result sets')
             
             for result in results:
                 processed_img = result.plot()
                 rois = self.extract_rois(color_image, result.boxes)
                 
-                # Process detected ROIs - now passing camera pose directly
+                self.processed_image_pub.publish(self.bridge.cv2_to_imgmsg(processed_img, "bgr8"))
+                
+                cv2.namedWindow('YOLO Detection', cv2.WINDOW_NORMAL)
+                cv2.resizeWindow('YOLO Detection', 640, 480)
+                cv2.imshow('YOLO Detection', processed_img)
+                
                 plane_info_list = self.featMan.process_new_image(
-                    color_image, 
-                    depth_image, 
-                    rois,
-                    self.classes,
-                    rotation_matrix, 
-                    translation_vector,
-                    self.camera_intrinsics,
+                    color_image, depth_image, rois, self.classes,
+                    rotation_matrix, translation_vector, self.camera_intrinsics,
                     self.debug_windows
                 )
                 
-                # Publish results
+                # Publish plane info and visualization markers
                 if plane_info_list:
                     self.publish_plane_info(plane_info_list)
                     self.publish_visualization_markers(plane_info_list)
-                
-                # Publish processed image
-                self.processed_image_pub.publish(self.bridge.cv2_to_imgmsg(processed_img, "bgr8"))
+                    
+            key = cv2.waitKey(1) & 0xFF
+            if key == 27:  # Esc to close debug windows
+                self.get_logger().info('User pressed Esc, closing debug windows')
+                cv2.destroyAllWindows()
                 
         except Exception as e:
             self.get_logger().error(f'Error processing images: {str(e)}')

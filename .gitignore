@@ -9,3 +9,6 @@ scripts/__pycache__/
 .vscode/
 models/
 .cache/
+build/
+log/
+install/
