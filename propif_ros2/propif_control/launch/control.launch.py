@@ -2,8 +2,6 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
-import os
-from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     # Declare launch parameters
@@ -11,9 +9,6 @@ def generate_launch_description():
     control_freq_param = LaunchConfiguration('control_frequency', default='100.0')
     approach_dist_param = LaunchConfiguration('approach_distance', default='0.1')
     interaction_time_param = LaunchConfiguration('interaction_duration', default='5.0')
-    
-    # Get package share directory
-    pkg_dir = get_package_share_directory('propif_control')
     
     # Create control node
     control_node = Node(
