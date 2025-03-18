@@ -4,17 +4,16 @@ import cv2
 import os
 import numpy as np
 from pathlib import Path
-from sensor_msgs.msg import Image, CameraInfo, JointState
+from sensor_msgs.msg import Image, CameraInfo
 from propif_msgs.msg import PlaneInfo
 from visualization_msgs.msg import MarkerArray, Marker
-from geometry_msgs.msg import Point, Vector3, Pose, TransformStamped, Quaternion
+from geometry_msgs.msg import Point, Vector3, Quaternion
 from cv_bridge import CvBridge
 from ultralytics import YOLOWorld as YOLO
 from std_srvs.srv import Trigger
 import time
 import torch
 import tf2_ros
-from tf2_geometry_msgs import do_transform_pose
 
 # local classes
 from propif_perception.roi import Rois
@@ -71,10 +70,6 @@ class PerceptionNode(Node):
         self.create_subscription(Image, '/camera/depth/image_rect_raw', self.depth_callback, 10)
         self.create_subscription(CameraInfo, '/camera/camera_info', self.camera_info_callback, 10)
         
-        # For Plan A: Subscribe to robot joint states to get end effector pose
-        if not self.use_sfm_reconstruction:
-            self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
-        
         # Create publishers
         self.processed_image_pub = self.create_publisher(Image, '/processed_image', 10)
         self.plane_info_pub = self.create_publisher(PlaneInfo, '/detected_planes', 10)
@@ -90,6 +85,9 @@ class PerceptionNode(Node):
         
         # Create timer for processing images
         self.timer = self.create_timer(0.1, self.process_images)
+        # Create timer for updating camera pose
+        if not self.use_sfm_reconstruction:  # Only for planA, 10hz
+            self.camera_pose_timer = self.create_timer(0.1, self.update_camera_pose)
         
         # Service to toggle collection mode for SFM
         if self.use_sfm_reconstruction:
@@ -238,16 +236,16 @@ class PerceptionNode(Node):
         
         return quat
     
-    def joint_state_callback(self, msg):
-        """Process joint states to get end effector pose (Plan A)"""
+    def update_camera_pose(self):
+        """Query camera pose from TF system (Plan A only)"""
         if not self.use_sfm_reconstruction:
             try:
-                # Try to get transform from camera to world with timeout
+                # Query latest camera pose from TF system
                 transform = self.tf_buffer.lookup_transform(
                     'world',
                     'camera_link',
                     rclpy.time.Time(),
-                    timeout=rclpy.duration.Duration(seconds=1.0)
+                    timeout=rclpy.duration.Duration(seconds=0.1)
                 )
                 
                 # Extract rotation and translation
@@ -258,11 +256,18 @@ class PerceptionNode(Node):
                 self.rotation_matrix = self.quaternion_to_rotation_matrix(q)
                 self.translation_vector = np.array([t.x, t.y, t.z])
                 
-                self.get_logger().debug('Updated camera pose from TF')
+                # Log success occasionally to avoid spam
+                if not hasattr(self, '_last_tf_success') or time.time() - self._last_tf_success > 10.0:
+                    self.get_logger().info('Camera pose updated successfully')
+                    self._last_tf_success = time.time()
+                    
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, 
                     tf2_ros.ExtrapolationException, tf2_ros.TimeoutException) as e:
-                self.get_logger().warning(f'Could not get camera transform: {e}')
-    
+                # Error logging
+                if not hasattr(self, '_last_tf_error') or time.time() - self._last_tf_error > 5.0:
+                    self.get_logger().warning(f'Failed to get camera pose: {str(e)}')
+                    self._last_tf_error = time.time()
+
     def color_callback(self, msg):
         """Process incoming color images"""
         try:
@@ -333,7 +338,7 @@ class PerceptionNode(Node):
         # Get camera pose based on current mode
         rotation_matrix, translation_vector = self.get_camera_pose()
         if rotation_matrix is None or translation_vector is None:
-            # self.get_logger().error(f'There was an error getting camera pose, skipping processing')
+            self.get_logger().error(f'There was an error getting camera pose, skipping processing')
             return
             
         try:
@@ -356,7 +361,6 @@ class PerceptionNode(Node):
             
             # YOLO object detection
             results = self.yolo_model.predict(color_image, conf=0.1, iou=0.3, max_det=100)
-            self.get_logger().info(f'YOLO found {len(results)} result sets')
             
             for result in results:
                 processed_img = result.plot()
@@ -429,7 +433,7 @@ class PerceptionNode(Node):
         """Publish visualization markers for RViz"""
         marker_array = MarkerArray()
         
-        for i, plane in enumerate(plane_info_list):
+        for _, plane in enumerate(plane_info_list):
             # Create centroid marker (sphere)
             centroid_marker = Marker()
             centroid_marker.header.frame_id = self.frame_id
