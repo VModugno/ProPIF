@@ -85,7 +85,7 @@ class SimulationNode(Node):
             raise
 
     def load_flower(self):
-        """Load flower model into simulation"""
+        """Load flower model into simulation and apply texture"""
         try:
             # Find the flower model path
             config_dir = "/home/steve/UCL_RAI/ProPIF"
@@ -95,8 +95,8 @@ class SimulationNode(Node):
             self.get_logger().info(f'Loading flower model from: {flower_path}')
             
             # Define position for the flower (in front of the robot along y-axis)
-            flower_position = [1.0, 0.0, 0.05]  # Adjust as needed
-            flower_orientation = p_client.getQuaternionFromEuler([1.57, 0, 0])
+            flower_position = [1.0, 0.0, 0.05]
+            flower_orientation = p_client.getQuaternionFromEuler([1.57, 0, -1.57])
             
             # Scale factor for flower model (since it's very small based on the OBJ file)
             scale = 0.4  # Scale up by 100x to convert from mm to reasonable size
@@ -123,6 +123,23 @@ class SimulationNode(Node):
                 baseOrientation=flower_orientation
             )
             
+            # Load and apply the combined texture
+            texture_path = os.path.join(config_dir, "models", "objects", "texture.png")
+            if os.path.exists(texture_path):
+                try:
+                    texture_id = p_client.loadTexture(texture_path)
+                    p_client.changeVisualShape(
+                        self.flower_id,
+                        -1,  # Base link
+                        textureUniqueId=texture_id
+                    )
+                    self.get_logger().info(f'Applied texture from: {texture_path}')
+                except Exception as e:
+                    self.get_logger().error(f'Failed to apply texture: {str(e)}')
+                    self.apply_fallback_coloring()
+            else:
+                self.get_logger().warn(f'Texture file not found: {texture_path}')
+                
             self.get_logger().info('Flower model loaded successfully')
             
         except Exception as e:
