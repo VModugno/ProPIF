@@ -5,6 +5,7 @@ import numpy as np
 import os
 from cv_bridge import CvBridge
 from threading import Lock
+import cv2
 
 # ROS 2 messages
 from std_msgs.msg import String
@@ -271,8 +272,7 @@ class SimulationNode(Node):
             link_orientation = link_state[1]  # World orientation of link
             
             # Calculate camera position (mounted on end effector)
-            # Slight offset from the end effector
-            offset = [0.0, 0.0, 0.05]  # 5cm forward from end effector
+            offset = [0.0, 0.0, 0.05]
             
             # Transform offset to world frame
             offset_world = p_client.multiplyTransforms(
@@ -284,8 +284,7 @@ class SimulationNode(Node):
             
             self.camera_position = offset_world
             
-            # Calculate camera target (looking forward from end effector)
-            forward = [0.1, 0, 0]  # Look 10cm forward along x-axis of end effector
+            forward = [0.0, 0.0, 0.15]  # Look 15cm forward along z-axis of end effector
             
             target_world = p_client.multiplyTransforms(
                 link_position,
@@ -296,8 +295,7 @@ class SimulationNode(Node):
             
             self.camera_target = target_world
             
-            # Calculate camera up vector (z-axis in end effector frame)
-            up = [0, 0, 1]
+            up = [0, -1, 0]
             
             up_world = p_client.multiplyTransforms(
                 [0, 0, 0],  # No position offset, just rotation
@@ -339,6 +337,9 @@ class SimulationNode(Node):
             rgb_array = np.reshape(rgb_array, (self.camera_height, self.camera_width, 4))
             rgb_array = rgb_array[:, :, :3]  # Remove alpha channel
             
+            # Convert RGB to BGR for OpenCV compatibility
+            bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+            
             # Extract depth image
             depth_buffer = np.array(img_data[3], dtype=np.float32)
             far = self.far_plane
@@ -348,7 +349,7 @@ class SimulationNode(Node):
             depth = far * near / (far - (far - near) * depth_buffer)
             
             # Create ROS messages
-            rgb_msg = self.bridge.cv2_to_imgmsg(rgb_array, encoding='bgr8')
+            rgb_msg = self.bridge.cv2_to_imgmsg(bgr_array, encoding='bgr8')
             depth_msg = self.bridge.cv2_to_imgmsg(depth, encoding='32FC1')
             
             # Set message headers
