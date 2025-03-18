@@ -31,7 +31,7 @@ def generate_launch_description():
             name='perception_node',
             output='screen',
             parameters=[{
-                'classes': ['flower', 'leaf', 'tree', 'plant'],
+                'classes': ['flower', 'leaf', 'tree', 'plant', ''],
                 'use_sfm_reconstruction': LaunchConfiguration('use_sfm_reconstruction'),
                 'reconstruction_image_count': LaunchConfiguration('reconstruction_image_count'),
                 'debug_windows': LaunchConfiguration('debug_windows'),

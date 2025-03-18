@@ -25,7 +25,7 @@ class PerceptionNode(Node):
         super().__init__('perception_node')
         
         # Declare parameters
-        self.declare_parameter('classes', ['flower', 'leaf', 'tree', 'plant'])
+        self.declare_parameter('classes', ["leaf", "tree", "plant", "flower", ""])
         self.declare_parameter('debug_windows', False)
         self.declare_parameter('use_sfm_reconstruction', False)  # Plan B: Use SFM reconstruction instead of direct pose
         self.declare_parameter('reconstruction_image_count', 10)  # Number of images to collect for reconstruction
@@ -360,9 +360,10 @@ class PerceptionNode(Node):
                 cv2.imshow('Depth Map', depth_colormap)
             
             # YOLO object detection
-            results = self.yolo_model.predict(color_image, conf=0.1, iou=0.3, max_det=100)
+            results = self.yolo_model.predict(color_image, conf=0.1, iou=0.3, max_det=100, agnostic_nms=True)
             
             for result in results:
+                self.get_logger().info(f'Detection classes: {[self.classes[int(cls)] for cls in result.boxes.cls]}')
                 processed_img = result.plot()
                 rois = self.extract_rois(color_image, result.boxes)
                 
