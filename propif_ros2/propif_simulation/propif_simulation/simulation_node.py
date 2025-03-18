@@ -100,7 +100,7 @@ class SimulationNode(Node):
             flower_orientation = p_client.getQuaternionFromEuler([1.57, 0, -1.57])
             
             # Scale factor for flower model (since it's very small based on the OBJ file)
-            scale = 0.4  # Scale up by 100x to convert from mm to reasonable size
+            scale = 0.5  # Scale up by 100x to convert from mm to reasonable size
             
             # Load flower as visual shape only initially
             visual_shape_id = p_client.createVisualShape(
