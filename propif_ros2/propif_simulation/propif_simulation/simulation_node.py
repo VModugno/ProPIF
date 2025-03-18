@@ -295,16 +295,9 @@ class SimulationNode(Node):
             
             self.camera_target = target_world
             
-            up = [0, -1, 0]
+            up = [0, 0, 1]
             
-            up_world = p_client.multiplyTransforms(
-                [0, 0, 0],  # No position offset, just rotation
-                link_orientation,
-                up,
-                [0, 0, 0, 1]
-            )[0]
-            
-            self.camera_up = up_world
+            self.camera_up = up
             
             # Update view matrix
             self.view_matrix = p_client.computeViewMatrix(
