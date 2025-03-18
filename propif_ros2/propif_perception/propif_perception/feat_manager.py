@@ -86,14 +86,15 @@ class FeatureManager:
         for obj in self.objects2dMan.get_potential_objects():
             if obj.is_filtered:
                 continue
-            if not obj.evaluate_model():
-                continue
+            # Check SfM model completion, plan B only
+            # if not obj.evaluate_model():
+            #     continue
                 
             obj_idx = obj.get_idx()
             full_mask = self.generate_combined_mask_for_object(rois, image, classes, obj_idx)
             if full_mask is not None:
                 obj.filter_SAM(full_mask)
-                cv2.imwrite('.cache/query/query.png', image)
+                # cv2.imwrite('.cache/query/query.png', image)
 
             keypoints_np = obj.existing_keypoints.cpu().numpy()  # shape: (1, N, 2)
             pixel_coords = keypoints_np[0]  # shape: (N, 2)
@@ -137,8 +138,8 @@ class FeatureManager:
             x2_i, y2_i = rois.x2[index], rois.y2[index]
             roi_area = full_mask[y1_i:y2_i, x1_i:x2_i]
             #! Debug
-            # cv2.imshow('mask', mask_array*255)
-            # cv2.waitKey(0)
+            cv2.imshow('mask', mask_array*255)
+            cv2.waitKey(1)
             full_mask[y1_i:y2_i, x1_i:x2_i] = np.logical_or(roi_area, mask_array).astype(np.uint8)
 
         return full_mask
@@ -216,7 +217,13 @@ class FeatureManager:
         for idx, _ in enumerate(rois.images):
             #! We only add flower objects for now
             if rois.classes[idx] == 0.0:
-                self.objects2dMan.add_potential_object(rois.features[idx]['keypoints'], rois.features[idx]['descriptors'], rois.classes[idx],rois.cx[idx],rois.cy[idx], idx)
-
+                self.objects2dMan.add_potential_object(
+                rois.features[idx]['keypoints'],
+                rois.features[idx]['descriptors'],
+                rois.classes[idx],
+                rois.cx[idx],
+                rois.cy[idx],
+                len(self.objects2dMan.get_potential_objects())
+            )
     def set_model_completed(self):
         self.objects2dMan.set_model_completed()
