@@ -97,7 +97,7 @@ class SimulationNode(Node):
             
             # Define position for the flower (in front of the robot along y-axis)
             flower_position = [1.0, 0.0, 0.05]
-            flower_orientation = p_client.getQuaternionFromEuler([1.57, 0, -1.57])
+            flower_orientation = p_client.getQuaternionFromEuler([1.57, 0, -1.37])
             
             # Scale factor for flower model (since it's very small based on the OBJ file)
             scale = 0.5  # Scale up by 100x to convert from mm to reasonable size
@@ -240,6 +240,25 @@ class SimulationNode(Node):
     def simulation_loop(self):
         """Main simulation loop"""
         try:
+            # Apply position control to maintain joint positions when no other control is active
+            p_client = self.sim_interface.pybullet_client
+            
+            # For each joint, apply position control to prevent drooping
+            for joint_idx in range(self.num_joints):
+                # Use initial joint positions as target
+                target_pos = self.initial_joint_positions[joint_idx]
+                
+                # Apply position control with appropriate gains
+                p_client.setJointMotorControl2(
+                    bodyUniqueId=self.robot_id,
+                    jointIndex=joint_idx,
+                    controlMode=p_client.POSITION_CONTROL,
+                    targetPosition=target_pos,
+                    positionGain=0.3,  # P gain
+                    velocityGain=1.0,  # D gain
+                    force=500  # Maximum force to apply
+                )
+            
             # Step the simulation
             self.sim_interface.pybullet_client.stepSimulation()
             
