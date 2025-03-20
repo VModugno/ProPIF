@@ -21,7 +21,6 @@ setup(
     maintainer_email='steveyang520314@gmail.com',
     description='Simulation package for ProPIF project',
     license='TODO: License declaration',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'simulation_node = propif_simulation.simulation_node:main',

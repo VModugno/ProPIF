@@ -21,7 +21,6 @@ setup(
     maintainer_email='steveyang520314@gmail.com',
     description='Flower perception package for ProPIF',
     license='TODO: License declaration',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'perception_node = propif_perception.perception_node:main',
