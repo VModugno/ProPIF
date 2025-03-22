@@ -1,0 +1,9 @@
+---
+float64[] joint_positions
+float64[] joint_velocities
+float64[] joint_torques
+float64[] joint_limits_lower
+float64[] joint_limits_upper
+float64[] joint_vel_limits
+int32 num_joints
+bool success
