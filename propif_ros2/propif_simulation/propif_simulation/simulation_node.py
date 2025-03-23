@@ -10,9 +10,9 @@ import cv2
 from std_msgs.msg import String
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Image, CameraInfo
-from propif_msgs.srv import ExecuteJointCommand, GetRobotState, ComputeIK, ComputeFK
+from propif_msgs.srv import ExecuteJointCommand, GetRobotState
 
-from simulation_and_control import pb, PinWrapper, CartesianDiffKin
+from simulation_and_control import pb  # PinWrapper etc. removed
 
 import tf2_ros
 
@@ -42,14 +42,14 @@ class SimulationNode(Node):
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
         
         self.execute_command_service = self.create_service(
-            ExecuteJointCommand, 'execute_joint_command', self.handle_joint_command)
+            ExecuteJointCommand, 'execute_joint_command', self.handle_joint_command
+        )
         self.robot_state_service = self.create_service(
-            GetRobotState, 'get_robot_state', self.handle_get_state)
+            GetRobotState, 'get_robot_state', self.handle_get_state
+        )
         
-        self.setup_kinematics_model()
-        self.compute_ik_service = self.create_service(ComputeIK, 'compute_ik', self.handle_compute_ik)
-        self.compute_fk_service = self.create_service(ComputeFK, 'compute_fk', self.handle_compute_fk)
-        
+        # IK/FK services and related code removed
+
         self.get_logger().info('Robot control services initialized')
         
         sim_period = 1.0 / self.simulation_rate
@@ -59,7 +59,7 @@ class SimulationNode(Node):
 
     def load_robot(self):
         try:
-            config_dir = "/home/steve/UCL_RAI/ProPIF" 
+            config_dir = "/home/steve/UCL_RAI/ProPIF"
             self.get_logger().info(f'Loading robot config from: {os.path.join(config_dir, self.robot_config)}')
             self.sim_interface = pb.SimInterface(
                 self.robot_config, 
@@ -105,11 +105,7 @@ class SimulationNode(Node):
             texture_path = os.path.join(config_dir, "models", "objects", "texture.png")
             if os.path.exists(texture_path):
                 texture_id = p_client.loadTexture(texture_path)
-                p_client.changeVisualShape(
-                    self.flower_id,
-                    -1,
-                    textureUniqueId=texture_id
-                )
+                p_client.changeVisualShape(self.flower_id, -1, textureUniqueId=texture_id)
             self.get_logger().info('Flower model loaded successfully')
         except Exception as e:
             self.get_logger().error(f'Failed to load flower model: {str(e)}')
@@ -229,7 +225,9 @@ class SimulationNode(Node):
             rgb_array = rgb_array[:, :, :3]
             bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
             depth_buffer = np.array(img_data[3], dtype=np.float32)
-            depth = self.far_plane * self.near_plane / (self.far_plane - (self.far_plane - self.near_plane) * depth_buffer)
+            depth = self.far_plane * self.near_plane / (
+                self.far_plane - (self.far_plane - self.near_plane) * depth_buffer
+            )
             now = self.get_clock().now().to_msg()
             rgb_msg = self.bridge.cv2_to_imgmsg(bgr_array, encoding='bgr8')
             rgb_msg.header.stamp = now
@@ -265,10 +263,10 @@ class SimulationNode(Node):
                 transform.header.frame_id = 'world'
                 transform.child_frame_id = link_name
                 position = link_state[0]
+                orientation = link_state[1]
                 transform.transform.translation.x = position[0]
                 transform.transform.translation.y = position[1]
                 transform.transform.translation.z = position[2]
-                orientation = link_state[1]
                 transform.transform.rotation.x = orientation[0]
                 transform.transform.rotation.y = orientation[1]
                 transform.transform.rotation.z = orientation[2]
@@ -329,88 +327,6 @@ class SimulationNode(Node):
             qz = 0.25 * S
         norm = np.sqrt(qw*qw + qx*qx + qy*qy + qz*qz)
         return qx/norm, qy/norm, qz/norm, qw/norm
-    
-    def setup_kinematics_model(self):
-        try:
-            config_dir = "/home/steve/UCL_RAI/ProPIF"
-            joint_names = [f"joint{i+1}" for i in range(self.num_joints)]
-            self.joint_names = joint_names
-            ext_names = np.expand_dims(np.array(joint_names), axis=0)
-            source_names = ["pybullet"]
-            self.dyn_model = PinWrapper(
-                self.robot_config,
-                "pybullet",
-                ext_names,
-                source_names,
-                False,
-                0,
-                config_dir
-            )
-            self.controlled_frame_name = "panda_link8"
-            self.kp_pos = 100.0
-            self.kp_ori = 10.0
-            self.joint_vel_limits = [10.0] * self.num_joints
-            self.get_logger().info("Kinematics model initialized successfully")
-        except Exception as e:
-            self.get_logger().error(f"Failed to initialize kinematics model: {str(e)}")
-    
-    def quaternion_to_rotation_matrix(self, q):
-        w, x, y, z = q
-        R = np.array([
-            [1-2*(y**2+z**2), 2*(x*y - z*w), 2*(x*z + y*w)],
-            [2*(x*y+z*w), 1-2*(x**2+z**2), 2*(y*z - x*w)],
-            [2*(x*z - y*w), 2*(y*z + x*w), 1-2*(x**2+y**2)]
-        ])
-        return R
-
-    def handle_compute_ik(self, request, response):
-        try:
-            seed = np.array(request.seed)
-            target_position = np.array(request.target_position)
-            target_orientation = request.target_orientation
-            time_step = request.time_step
-            self.get_logger().info(f"ComputeIK: seed = {seed}")
-            self.get_logger().info(f"ComputeIK: target_position = {target_position}")
-            self.get_logger().info(f"ComputeIK: target_orientation = {target_orientation}")
-            self.get_logger().info(f"ComputeIK: time_step = {time_step}")
-
-            R = self.quaternion_to_rotation_matrix(target_orientation)
-            self.get_logger().info(f"ComputeIK: computed R = {R}")
-            pd_d = np.zeros(3)
-            q_des, _ = CartesianDiffKin(
-                self.dyn_model,
-                self.controlled_frame_name,
-                seed,
-                target_position,
-                pd_d,
-                R,
-                np.zeros((3,3)),
-                time_step,
-                "pos",
-                self.kp_pos,
-                self.kp_ori,
-                np.array(self.joint_vel_limits)
-            )
-            response.joint_angles = q_des.tolist()
-            response.success = True
-        except Exception as e:
-            self.get_logger().error(f"ComputeIK error: {str(e)}")
-            response.success = False
-        return response
-
-    def handle_compute_fk(self, request, response):
-        try:
-            joint_positions = np.array(request.joint_positions)
-            controlled_frame_name = request.controlled_frame_name
-            pos, R = self.dyn_model.ComputeFK(joint_positions, controlled_frame_name)
-            quat = self.rotation_matrix_to_quaternion(R)
-            response.position = pos.tolist()
-            response.orientation = quat
-            response.success = True
-        except Exception as e:
-            self.get_logger().error(f"ComputeFK error: {str(e)}")
-            response.success = False
-        return response
 
     def handle_joint_command(self, request, response):
         try:
@@ -430,30 +346,27 @@ class SimulationNode(Node):
                     )
             p_client.stepSimulation()
             response.success = True
-            return response
         except Exception as e:
             self.get_logger().error(f'Joint command error: {str(e)}')
             response.success = False
-            return response
+        return response
 
     def handle_get_state(self, request, response):
         try:
             p_client = self.sim_interface.pybullet_client
-            # self.get_logger().info('Processing robot state request')
             joint_positions = []
             joint_velocities = []
             joint_torques = []
             for i in range(self.num_joints):
-                joint_state = p_client.getJointState(self.robot_id, i)
-                joint_positions.append(joint_state[0])
-                joint_velocities.append(joint_state[1])
-                joint_torques.append(joint_state[3])
+                js = p_client.getJointState(self.robot_id, i)
+                joint_positions.append(js[0])
+                joint_velocities.append(js[1])
+                joint_torques.append(js[3])
             try:
                 lower_limits, upper_limits = self.sim_interface.GetBotJointsLimit()
                 velocity_limits = self.sim_interface.GetBotJointsVelLimit()
-                # self.get_logger().info(f'Got joint limits: {len(lower_limits)} lower, {len(upper_limits)} upper, {len(velocity_limits)} velocity')
             except Exception as e:
-                self.get_logger().warn(f'Failed to get joint limits: {str(e)}, using defaults')
+                self.get_logger().warn(f'Failed to get joint limits: {e}, using defaults')
                 lower_limits = [-3.14] * self.num_joints
                 upper_limits = [3.14] * self.num_joints
                 velocity_limits = [10.0] * self.num_joints
@@ -465,14 +378,10 @@ class SimulationNode(Node):
             response.joint_vel_limits = velocity_limits
             response.num_joints = self.num_joints
             response.success = True
-            # self.get_logger().info('Completed robot state request successfully')
-            return response
         except Exception as e:
-            import traceback
             self.get_logger().error(f'Get robot state error: {str(e)}')
-            self.get_logger().error(traceback.format_exc())
             response.success = False
-            return response
+        return response
 
 def main(args=None):
     rclpy.init(args=args)
