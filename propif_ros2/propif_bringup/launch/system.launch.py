@@ -51,6 +51,6 @@ def generate_launch_description():
                               
         # Launch components
         simulation_launch,
-        perception_launch,
+        # perception_launch,
         control_launch,
     ])

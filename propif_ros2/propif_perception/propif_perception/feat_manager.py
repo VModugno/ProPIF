@@ -72,12 +72,12 @@ class FeatureManager:
                 # Store new objects if there are any remaining ROIs
                 if len(rois.images) > 0:
                     self.store_new_2dobjects(rois)
-                    print("New features stored from ROIs.")
             else:
                 # Initiate new objects if there's no existing objects
                 self.store_new_2dobjects(rois)  # Store features if no existing features are present
                 print("Initial features from ROIs stored.")
-
+        if plane_info_list:
+            print(f'plane info list: {plane_info_list} !!!!!!!!!!!!!!!!!!!!!!')
         return plane_info_list
 
     
@@ -86,20 +86,32 @@ class FeatureManager:
         for obj in self.objects2dMan.get_potential_objects():
             if obj.is_filtered:
                 continue
-            # Check SfM model completion, plan B only
-            # if not obj.evaluate_model():
-            #     continue
+            if not obj.evaluate_model():
+                continue
                 
             obj_idx = obj.get_idx()
-            full_mask = self.generate_combined_mask_for_object(rois, image, classes, obj_idx)
-            if full_mask is not None:
-                obj.filter_SAM(full_mask)
-                # cv2.imwrite('.cache/query/query.png', image)
-
+            matching_roi_idx = self.find_matching_roi(obj, rois)
+            
+            if matching_roi_idx is not None:
+                print(f'Found matching ROI at index {matching_roi_idx}')
+                full_mask = self.generate_combined_mask_for_object(rois, image, classes, matching_roi_idx)
+                if full_mask is not None:
+                    obj.filter_SAM(full_mask)
+            else:
+                print('No matching ROI found, using existing keypoints without filtering')
+                full_mask = None
+                
             keypoints_np = obj.existing_keypoints.cpu().numpy()  # shape: (1, N, 2)
             pixel_coords = keypoints_np[0]  # shape: (N, 2)
             
-            # Use provided camera intrinsics directly
+            # Debug visualization: draw keypoints on image copy
+            debug_image = image.copy()
+            for point in pixel_coords:
+                x, y = int(point[0]), int(point[1])
+                cv2.circle(debug_image, (x, y), 3, (0, 255, 0), -1)
+            cv2.imshow('Keypoints before 3D conversion', debug_image)
+            cv2.waitKey(1)  # Show for at least 1ms
+            
             three_d_object = ThreeDObject(depth_image, pixel_coords, 
                                         rotation_matrix, 
                                         translation_vector, 
@@ -114,14 +126,36 @@ class FeatureManager:
                 plane_info_list.append(info)
         
         return plane_info_list
+    
+    def find_matching_roi(self, obj, rois):
+        if len(rois.images) == 0:
+            return None
+            
+        distances = []
+        for idx, _ in enumerate(rois.images):
+            distance = np.linalg.norm(
+                np.array([obj.last_roi_center_position['x'], obj.last_roi_center_position['y']]) - 
+                np.array([rois.cx[idx], rois.cy[idx]])
+            )
+            distances.append((distance, idx))
+        
+        distances.sort(key=lambda x: x[0])
+        
+        if distances and distances[0][0] < 100:
+            return distances[0][1]
+        return None
 
-    def generate_combined_mask_for_object(self, rois, image, classes, obj_idx):
-        print(f'Generating mask for object {classes[int(rois.classes[obj_idx])]}')
-        roi_center_x = rois.images[obj_idx].shape[1] // 2
-        roi_center_y = rois.images[obj_idx].shape[0] // 2
+    def generate_combined_mask_for_object(self, rois, image, classes, roi_idx):
+        if roi_idx >= len(rois.images):
+            print(f"Error: ROI index {roi_idx} out of range")
+            return None
+            
+        print(f'Generating mask for object {classes[int(rois.classes[roi_idx])]}')
+        roi_center_x = rois.images[roi_idx].shape[1] // 2
+        roi_center_y = rois.images[roi_idx].shape[0] // 2
         roi_center_point = [roi_center_x, roi_center_y]
-        roi_img = rois.images[obj_idx]
-        cur_results = self.fast_sam_model.predict(rois.images[obj_idx], retina_masks=True, conf=0.1, iou=0.2, points=[roi_center_point])
+        roi_img = rois.images[roi_idx]
+        cur_results = self.fast_sam_model.predict(rois.images[roi_idx], retina_masks=True, conf=0.1, iou=0.2, points=[roi_center_point])
         
         combined_mask = np.zeros((roi_img.shape[0], roi_img.shape[1]), dtype=np.uint8)
         for cur_result in cur_results:
@@ -129,7 +163,7 @@ class FeatureManager:
                 for mask_tensor in cur_result.masks.data:
                     mask_array = mask_tensor.cpu().numpy().astype(np.uint8)
                     combined_mask = np.logical_or(combined_mask, mask_array).astype(np.uint8)
-        rois.add_mask(obj_idx, combined_mask)
+        rois.add_mask(roi_idx, combined_mask)
 
         h, w = image.shape[:2]
         full_mask = np.zeros((h, w), dtype=np.uint8)
@@ -143,16 +177,6 @@ class FeatureManager:
             full_mask[y1_i:y2_i, x1_i:x2_i] = np.logical_or(roi_area, mask_array).astype(np.uint8)
 
         return full_mask
-
-    def create_masked_image(self, image, rois):
-        # Start with a black image of the same size as the original
-        masked_image = np.zeros_like(image)
-        
-        # Fill in the regions defined by ROIs from the Roi object
-        for img, x1, y1, x2, y2 in zip(rois.images, rois.x1, rois.y1, rois.x2, rois.y2):
-            masked_image[y1:y2, x1:x2] = img
-
-        return masked_image
     
     def extract_features(self, image):
         # Prepare the image and extract features

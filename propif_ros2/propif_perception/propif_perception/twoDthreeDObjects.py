@@ -51,7 +51,8 @@ class Potential2dObject:
         alpha_sum = np.sum(self.alpha)
         expected_probs = self.alpha / alpha_sum
         max_prob = np.max(expected_probs)
-        return max_prob > 0.9 and self.model_completed
+        # TODO: Check if model completed when using plan B
+        return max_prob > 0.9
 
     
     def filter_SAM(self, mask):

@@ -363,7 +363,7 @@ class PerceptionNode(Node):
             results = self.yolo_model.predict(color_image, conf=0.1, iou=0.3, max_det=100, agnostic_nms=True)
             
             for result in results:
-                self.get_logger().info(f'Detection classes: {[self.classes[int(cls)] for cls in result.boxes.cls]}')
+                # self.get_logger().info(f'Detection classes: {[self.classes[int(cls)] for cls in result.boxes.cls]}')
                 processed_img = result.plot()
                 rois = self.extract_rois(color_image, result.boxes)
                 
@@ -378,6 +378,8 @@ class PerceptionNode(Node):
                     rotation_matrix, translation_vector, self.camera_intrinsics,
                     self.debug_windows
                 )
+
+                # print(f'Plane info list: {plane_info_list} !!!!')
                 
                 # Publish plane info and visualization markers
                 if plane_info_list:
