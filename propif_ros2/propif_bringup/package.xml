@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>propif_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch files for ProPIF system</description>
+  <maintainer email="steveyang520314@gmail.com">steve</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>propif_simulation</exec_depend>
+  <exec_depend>propif_perception</exec_depend>
+  <exec_depend>propif_control</exec_depend>
+  <exec_depend>propif_msgs</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,11 +1,12 @@
 images/
 *.pt
 *.pth
-build/
 video/*
 !video/video_list_link.txt
 scripts/assets/*
-scripts/__pycache__/
+__pycache__/
 .vscode/
-models/
 .cache/
+build/
+log/
+install/
