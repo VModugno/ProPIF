@@ -30,3 +30,4 @@ dependencies:
       - open3d
       - ultralytics
       - pymc
+      - pybullet
