@@ -1,0 +1,64 @@
+robot_cfg:
+  kinematics:
+    use_usd_kinematics: false
+    #！ Change to ${Path_to_project}/Propif/models/panda_description/panda.urdf
+    urdf_path: "/home/steve/UCL_RAI/ProPIF/models/panda_description/panda.urdf"
+    base_link: "panda_link0"
+    ee_link: "panda_link8"
+    asset_root_path: "panda_description"
+    
+    # Add collision link configuration
+    collision_link_names: null
+    collision_spheres: null
+    collision_sphere_buffer: 0.005
+    
+    # Self-collision configuration
+    use_global_cumul: true
+    self_collision_ignore:
+      {
+        "panda_link0": ["panda_link1", "panda_link2"],
+        "panda_link1": ["panda_link2", "panda_link3", "panda_link4"],
+        "panda_link2": ["panda_link3", "panda_link4"],
+        "panda_link3": ["panda_link4", "panda_link6"],
+        "panda_link4": ["panda_link5", "panda_link6", "panda_link7", "panda_link8"],
+        "panda_link5": ["panda_link6", "panda_link7", "panda_link8"],
+        "panda_link6": ["panda_link7", "panda_link8"],
+        "panda_link7": ["panda_link8"]
+      }
+    
+    # Mesh configuration
+    mesh_link_names:
+      [
+        "panda_link0",
+        "panda_link1",
+        "panda_link2",
+        "panda_link3",
+        "panda_link4",
+        "panda_link5",
+        "panda_link6",
+        "panda_link7",
+        "panda_link8"
+      ]
+    
+  # cspace:
+  #   joint_names: [
+  #     "panda_joint1",
+  #     "panda_joint2",
+  #     "panda_joint3",
+  #     "panda_joint4",
+  #     "panda_joint5",
+  #     "panda_joint6",
+  #     "panda_joint7"
+  #   ]
+  #   retract_config: [0.0, -1.3, 0.0, -2.5, 0.0, 1.0, 0.0]
+  #   null_space_weight: [1, 1, 1, 1, 1, 1, 1]
+  #   cspace_distance_weight: [1, 1, 1, 1, 1, 1, 1]
+  #   max_acceleration: 15.0
+  #   max_jerk: 500.0
+  
+  # collision:
+  #   collision_checker: "primitive"
+  #   collision_sphere_buffer: 0.01
+  #   self_collision_avoidance:
+  #     weight: 0.0
+  #     activation_distance: 0.05

@@ -27,7 +27,7 @@ class ControllerState(Enum):
 class ControlNode(Node):
     def __init__(self):
         super().__init__('control_node')
-        # Load config, change this path to your own config file
+        # Load config, change this path to ${Path_to_project}/Propif/configs/pandaconfig.yaml
         self.curobo_robot_config = "/home/steve/UCL_RAI/ProPIF/configs/pandaconfig.yaml"
         self.control_frequency = 100
 
@@ -106,7 +106,6 @@ class ControlNode(Node):
 
     def setup_motion_planner(self):
         try:
-            # Use a stock robot configuration like "franka.yml" from CuRobo's examples
             # Create world config with flower box
             cuboid = Cuboid(
                 name="flower_box",
@@ -115,19 +114,23 @@ class ControlNode(Node):
             )
             world_config = WorldConfig(cuboid=[cuboid])
             
-            # Use CuRobo's stock configuration
+            # Use your custom configuration file directly
             config = MotionGenConfig.load_from_robot_config(
-                "franka.yml",
+                self.curobo_robot_config,  # Your custom YAML file path
                 world_config,
+                self.tensor_args,
                 interpolation_dt=0.01,
                 collision_checker_type=CollisionCheckerType.PRIMITIVE,
                 use_cuda_graph=False,
-                self_collision_check=False
+                self_collision_check=True,
+                num_ik_seeds=50,            # More IK attempts
+                num_trajopt_seeds=10,       # More trajectory optimization seeds
+                evaluate_interpolated_trajectory=True
             )
             
             self.motion_planner = MotionGen(config)
             self.motion_planner.warmup(enable_graph=False)
-            self.get_logger().info('Motion planner initialized with stock configuration')
+            self.get_logger().info('Motion planner initialized with custom configuration')
         except Exception as e:
             self.get_logger().error(f'Motion planner error: {e}')
             self.motion_planner = None
@@ -189,9 +192,27 @@ class ControlNode(Node):
         if not self.current_plane or not self.motion_planner:
             return False
         robot_state = self.get_robot_state()
+        self.get_logger().info(f"Robot state Now: {robot_state}")
         if not robot_state:
             return False
         current_q = np.array(robot_state.joint_positions)
+        
+        # Add joint limits validation
+        lower_limits = np.array(robot_state.joint_limits_lower)
+        upper_limits = np.array(robot_state.joint_limits_upper)
+        safety_margin = 0.01  # Small margin to stay away from limits
+        
+        # Check if any joint is at or beyond limits
+        for i, (pos, lower, upper) in enumerate(zip(current_q, lower_limits, upper_limits)):
+            if pos <= lower + safety_margin or pos >= upper - safety_margin:
+                self.get_logger().warn(f"Joint {i+1} at position {pos:.4f} is too close to limits [{lower:.4f}, {upper:.4f}]")
+                # Try to move joint slightly away from limit
+                if pos <= lower + safety_margin:
+                    current_q[i] = lower + 2*safety_margin
+                else:
+                    current_q[i] = upper - 2*safety_margin
+                self.get_logger().info(f"Adjusted joint {i+1} to {current_q[i]:.4f}")
+        
         normal = np.array([
             self.current_plane.normal.x,
             self.current_plane.normal.y,
@@ -215,6 +236,9 @@ class ControlNode(Node):
             target_quat[0], target_quat[1], target_quat[2], target_quat[3]
         ])
 
+        self.get_logger().info(f"Start state: {start_state}")
+        self.get_logger().info(f"Goal pose: {goal_pose}")
+        
         result = self.motion_planner.plan_single(
             start_state, goal_pose,
             MotionGenPlanConfig(max_attempts=100)
@@ -226,7 +250,7 @@ class ControlNode(Node):
             self.get_logger().info(f'Path with {len(self.path)} waypoints')
             return True
         else:
-            self.get_logger().warn('Motion planning failed')
+            self.get_logger().warn(f'Motion planning failed: {result.status}')
             return False
 
     def compute_orientation_matrix(self, normal):
