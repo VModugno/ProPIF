@@ -3,29 +3,35 @@ from rclpy.node import Node
 import numpy as np
 from enum import Enum
 import torch
+
+# Curobo imports
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 from curobo.types.math import Pose as CuroboPose
 from curobo.types.robot import JointState as CuroboJointState
 from curobo.types.base import TensorDeviceType
+from curobo.geom.types import Cuboid, WorldConfig
+from curobo.geom.sdf.world import CollisionCheckerType
+
+# ROS message/service imports
 from propif_msgs.msg import PlaneInfo
 from propif_msgs.srv import ExecuteJointCommand, GetRobotState
 from std_msgs.msg import String
+
 
 class ControllerState(Enum):
     IDLE = 0
     PLANNING = 1
     EXECUTION = 2
 
+
 class ControlNode(Node):
     def __init__(self):
         super().__init__('control_node')
-        self.declare_parameter('robot_config', 'pandaconfig.json')
-        self.declare_parameter('control_frequency', 100.0)
-        self.declare_parameter('curobo_robot_config', 'franka.yml')
-        self.robot_config = self.get_parameter('robot_config').value
-        self.control_frequency = self.get_parameter('control_frequency').value
-        self.curobo_robot_config = self.get_parameter('curobo_robot_config').value
+        # Load config, change this path to your own config file
+        self.curobo_robot_config = "/home/steve/UCL_RAI/ProPIF/configs/pandaconfig.yaml"
+        self.control_frequency = 100
 
+        # Internal states
         self.state = ControllerState.IDLE
         self.detected_planes = []
         self.current_plane = None
@@ -33,21 +39,32 @@ class ControlNode(Node):
         self.path_index = 0
         self.tensor_args = TensorDeviceType()
 
+        # Service clients
         self.joint_command_client = self.create_client(ExecuteJointCommand, 'execute_joint_command')
         while not self.joint_command_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for joint command service...')
+
         self.state_client = self.create_client(GetRobotState, 'get_robot_state')
         while not self.state_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for robot state service...')
 
         self.latest_robot_state = None
         self.create_timer(0.1, self.request_robot_state)
+
+        # Robot model + planner setup
         self.setup_robot_model()
         self.setup_motion_planner()
+
+        # ROS subscriptions/publishers
         self.create_subscription(PlaneInfo, '/detected_planes', self.plane_callback, 10)
         self.status_publisher = self.create_publisher(String, '/control_status', 10)
+
+        # Control loop
         self.create_timer(1.0 / self.control_frequency, self.control_loop)
+
+        # One-time init sequence
         self.init_timer = self.create_timer(1.0, self.initialization_sequence_wrapper)
+
         self.get_logger().info('Control node initialized')
 
     def request_robot_state(self):
@@ -89,11 +106,28 @@ class ControlNode(Node):
 
     def setup_motion_planner(self):
         try:
-            world_config = {"cuboid": {"table": {"dims": [2, 2, 0.2], "pose": [0.4, 0.0, -0.1, 1, 0, 0, 0]}}}
-            config = MotionGenConfig.load_from_robot_config(self.curobo_robot_config, world_config, interpolation_dt=0.01)
+            # Use a stock robot configuration like "franka.yml" from CuRobo's examples
+            # Create world config with flower box
+            cuboid = Cuboid(
+                name="flower_box",
+                dims=[0.77, 0.77, 0.32],
+                pose=[1.0, 0.0, 0.05, 1.0, 0.0, 0.0, 0.0]
+            )
+            world_config = WorldConfig(cuboid=[cuboid])
+            
+            # Use CuRobo's stock configuration
+            config = MotionGenConfig.load_from_robot_config(
+                "franka.yml",
+                world_config,
+                interpolation_dt=0.01,
+                collision_checker_type=CollisionCheckerType.PRIMITIVE,
+                use_cuda_graph=False,
+                self_collision_check=False
+            )
+            
             self.motion_planner = MotionGen(config)
-            self.motion_planner.warmup()
-            self.get_logger().info('Motion planner initialized')
+            self.motion_planner.warmup(enable_graph=False)
+            self.get_logger().info('Motion planner initialized with stock configuration')
         except Exception as e:
             self.get_logger().error(f'Motion planner error: {e}')
             self.motion_planner = None
@@ -158,20 +192,34 @@ class ControlNode(Node):
         if not robot_state:
             return False
         current_q = np.array(robot_state.joint_positions)
-        normal = np.array([self.current_plane.normal.x,
-                           self.current_plane.normal.y,
-                           self.current_plane.normal.z])
-        target_pos = [self.current_plane.centroid.x + 0.2 * normal[0],
-                      self.current_plane.centroid.y + 0.2 * normal[1],
-                      self.current_plane.centroid.z + 0.2 * normal[2]]
+        normal = np.array([
+            self.current_plane.normal.x,
+            self.current_plane.normal.y,
+            self.current_plane.normal.z
+        ])
+        target_pos = [
+            self.current_plane.centroid.x + 0.2 * normal[0],
+            self.current_plane.centroid.y + 0.2 * normal[1],
+            self.current_plane.centroid.z + 0.2 * normal[2],
+        ]
         self.get_logger().info(f"Target pos: {target_pos}")
+
         start_state = CuroboJointState.from_position(
-            self.np_to_torch_tensor(current_q.reshape(1, -1)), joint_names=self.joint_names)
+            self.np_to_torch_tensor(current_q.reshape(1, -1)),
+            joint_names=self.joint_names
+        )
         R = self.compute_orientation_matrix(normal)
         target_quat = self.rotation_to_quaternion(R)
-        goal_pose = CuroboPose.from_list([target_pos[0], target_pos[1], target_pos[2],
-                                          target_quat[0], target_quat[1], target_quat[2], target_quat[3]])
-        result = self.motion_planner.plan_single(start_state, goal_pose, MotionGenPlanConfig(max_attempts=10))
+        goal_pose = CuroboPose.from_list([
+            target_pos[0], target_pos[1], target_pos[2],
+            target_quat[0], target_quat[1], target_quat[2], target_quat[3]
+        ])
+
+        result = self.motion_planner.plan_single(
+            start_state, goal_pose,
+            MotionGenPlanConfig(max_attempts=100)
+        )
+
         if result.success:
             traj = result.get_interpolated_plan()
             self.path = self.torch_to_np(traj.position)

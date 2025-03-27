@@ -93,10 +93,10 @@ class SimulationNode(Node):
             )
             collision_shape_id = p_client.createCollisionShape(
                 shapeType=p_client.GEOM_BOX,
-                halfExtents=[0.05, 0.05, 0.05]
+                halfExtents=[0.172, 0.385, 0.16]
             )
             self.flower_id = p_client.createMultiBody(
-                baseMass=0.1,
+                baseMass=0.0,
                 baseCollisionShapeIndex=collision_shape_id,
                 baseVisualShapeIndex=visual_shape_id,
                 basePosition=flower_position,

@@ -3,24 +3,12 @@ from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
-def generate_launch_description():
-    # Declare launch parameters
-    use_sim_param = LaunchConfiguration('use_simulation', default='true')
-    control_freq_param = LaunchConfiguration('control_frequency', default='100.0')
-    approach_dist_param = LaunchConfiguration('approach_distance', default='0.1')
-    interaction_time_param = LaunchConfiguration('interaction_duration', default='5.0')
-    
+def generate_launch_description():    
     # Create control node
     control_node = Node(
         package='propif_control',
         executable='control_node',
         name='control_node',
-        parameters=[{
-            'use_simulation': use_sim_param,
-            'control_frequency': control_freq_param,
-            'approach_distance': approach_dist_param,
-            'interaction_duration': interaction_time_param,
-        }],
         output='screen'
     )
     
