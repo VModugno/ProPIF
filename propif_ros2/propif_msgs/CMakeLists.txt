@@ -16,10 +16,8 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PlaneInfo.msg"
-  "srv/ExecuteJointCommand.srv"
+  "srv/ExecuteJointTrajectory.srv"
   "srv/GetRobotState.srv"
-  "srv/ComputeFK.srv"
-  "srv/ComputeIK.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )
 

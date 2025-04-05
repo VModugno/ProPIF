@@ -1,7 +1,7 @@
 robot_cfg:
   kinematics:
     use_usd_kinematics: false
-    #！ Change to ${Path_to_project}/Propif/models/panda_description/panda.urdf
+    # Change to ${Path_to_project}/Propif/models/panda_description/panda.urdf
     urdf_path: "/home/steve/UCL_RAI/ProPIF/models/panda_description/panda.urdf"
     base_link: "panda_link0"
     ee_link: "panda_link8"
