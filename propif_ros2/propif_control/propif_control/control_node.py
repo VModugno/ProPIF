@@ -26,7 +26,7 @@ class ControllerState(Enum):
 class ControlNode(Node):
     def __init__(self):
         super().__init__('control_node')
-        # Load configuration
+        #! Load configuration Change this to your own config path
         self.curobo_robot_config = "/home/steve/UCL_RAI/ProPIF/configs/pandaconfig.yaml"
         self.control_frequency = 100
 
