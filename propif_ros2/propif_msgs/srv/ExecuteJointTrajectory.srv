@@ -1,0 +1,9 @@
+# Request
+float64[] trajectory
+uint32    num_waypoints
+float64   time_step
+
+---
+# Response
+bool      success
+string    message

@@ -1,8 +1,0 @@
-float64[] joint_positions
-string controlled_frame_name
-
----
-
-bool success
-float64[3] position
-float64[4] orientation

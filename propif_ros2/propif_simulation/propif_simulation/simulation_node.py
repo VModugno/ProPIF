@@ -10,9 +10,9 @@ import cv2
 from std_msgs.msg import String
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Image, CameraInfo
-from propif_msgs.srv import ExecuteJointCommand, GetRobotState
+from propif_msgs.srv import ExecuteJointTrajectory, GetRobotState
 
-from simulation_and_control import pb  # PinWrapper etc. removed
+from simulation_and_control import pb
 
 import tf2_ros
 
@@ -20,17 +20,12 @@ class SimulationNode(Node):
     def __init__(self):
         super().__init__('simulation_node')
         
-        self.declare_parameter('robot_config', 'pandaconfig.json')
-        self.declare_parameter('flower_model', 'flower.obj')
-        self.declare_parameter('simulation_rate', 100.0)
-        self.declare_parameter('gui_enabled', True)
-        self.declare_parameter('camera_enabled', True)
-        
-        self.robot_config = self.get_parameter('robot_config').value
-        self.flower_model = self.get_parameter('flower_model').value 
-        self.simulation_rate = self.get_parameter('simulation_rate').value
-        self.gui_enabled = self.get_parameter('gui_enabled').value
-        self.camera_enabled = self.get_parameter('camera_enabled').value
+        # Direct initialization instead of parameters
+        self.robot_config = 'pandaconfig.json'
+        self.flower_model = 'flower.obj'
+        self.simulation_rate = 100.0
+        self.gui_enabled = True
+        self.camera_enabled = True
         
         self.load_robot()
         self.load_flower()
@@ -40,25 +35,35 @@ class SimulationNode(Node):
             
         self.setup_publishers()
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+
+        # Publisher for trajectory status notifications
+        self.trajectory_status_pub = self.create_publisher(String, 'trajectory_status', 10)
         
-        self.execute_command_service = self.create_service(
-            ExecuteJointCommand, 'execute_joint_command', self.handle_joint_command
+        # Create services
+        self.trajectory_service = self.create_service(
+            ExecuteJointTrajectory, 'execute_joint_trajectory', self.handle_joint_trajectory
         )
         self.robot_state_service = self.create_service(
             GetRobotState, 'get_robot_state', self.handle_get_state
         )
         
-        # IK/FK services and related code removed
-
         self.get_logger().info('Robot control services initialized')
         
+        # Setup simulation timer
         sim_period = 1.0 / self.simulation_rate
         self.sim_timer = self.create_timer(sim_period, self.simulation_loop)
                 
         self.get_logger().info('Simulation node initialized')
+        
+        # Variables for trajectory execution
+        self.trajectory = None
+        self.trajectory_index = 0
+        self.trajectory_time_step = None
+        self.trajectory_last_update_time = None
 
     def load_robot(self):
         try:
+            #! Change to your own robot config path
             config_dir = "/home/steve/UCL_RAI/ProPIF"
             self.get_logger().info(f'Loading robot config from: {os.path.join(config_dir, self.robot_config)}')
             self.sim_interface = pb.SimInterface(
@@ -80,6 +85,7 @@ class SimulationNode(Node):
 
     def load_flower(self):
         try:
+            #! Change to your own flower model path
             config_dir = "/home/steve/UCL_RAI/ProPIF"
             flower_path = os.path.join(config_dir, "models", "objects", self.flower_model)
             p_client = self.sim_interface.pybullet_client
@@ -93,10 +99,10 @@ class SimulationNode(Node):
             )
             collision_shape_id = p_client.createCollisionShape(
                 shapeType=p_client.GEOM_BOX,
-                halfExtents=[0.05, 0.05, 0.05]
+                halfExtents=[0.172, 0.385, 0.16]
             )
             self.flower_id = p_client.createMultiBody(
-                baseMass=0.1,
+                baseMass=0.0,
                 baseCollisionShapeIndex=collision_shape_id,
                 baseVisualShapeIndex=visual_shape_id,
                 basePosition=flower_position,
@@ -133,6 +139,7 @@ class SimulationNode(Node):
                 nearVal=self.near_plane,
                 farVal=self.far_plane
             )
+            from sensor_msgs.msg import CameraInfo
             self.camera_info_msg = CameraInfo()
             self.camera_info_msg.height = self.camera_height
             self.camera_info_msg.width = self.camera_width
@@ -162,17 +169,49 @@ class SimulationNode(Node):
     def simulation_loop(self):
         try:
             p_client = self.sim_interface.pybullet_client
-            for joint_idx in range(self.num_joints):
-                target_pos = self.initial_joint_positions[joint_idx]
-                p_client.setJointMotorControl2(
-                    bodyUniqueId=self.robot_id,
-                    jointIndex=joint_idx,
-                    controlMode=p_client.POSITION_CONTROL,
-                    targetPosition=target_pos,
-                    positionGain=0.3,
-                    velocityGain=1.0,
-                    force=500
-                )
+            # If a trajectory is active, execute it; otherwise, hold initial positions.
+            if self.trajectory is not None:
+                current_time = self.get_clock().now().nanoseconds / 1e9
+                if self.trajectory_last_update_time is None:
+                    self.trajectory_last_update_time = current_time
+                if current_time - self.trajectory_last_update_time >= self.trajectory_time_step:
+                    self.trajectory_index += 1
+                    self.trajectory_last_update_time = current_time
+                if self.trajectory_index >= self.trajectory.shape[0]:
+                    self.get_logger().info("Trajectory execution finished")
+                    
+                    # Publish trajectory completion status message
+                    status_msg = String()
+                    status_msg.data = "Trajectory execution finished"
+                    self.trajectory_status_pub.publish(status_msg)
+                    
+                    self.trajectory = None
+                    self.trajectory_index = 0
+                    self.trajectory_last_update_time = None
+                else:
+                    target_positions = self.trajectory[self.trajectory_index]
+                    for joint_idx in range(self.num_joints):
+                        p_client.setJointMotorControl2(
+                            bodyUniqueId=self.robot_id,
+                            jointIndex=joint_idx,
+                            controlMode=p_client.POSITION_CONTROL,
+                            targetPosition=target_positions[joint_idx],
+                            positionGain=0.5,
+                            velocityGain=1.0,
+                            force=500
+                        )
+            else:
+                for joint_idx in range(self.num_joints):
+                    target_pos = self.initial_joint_positions[joint_idx]
+                    p_client.setJointMotorControl2(
+                        bodyUniqueId=self.robot_id,
+                        jointIndex=joint_idx,
+                        controlMode=p_client.POSITION_CONTROL,
+                        targetPosition=target_pos,
+                        positionGain=0.5,
+                        velocityGain=1.0,
+                        force=500
+                    )
             p_client.stepSimulation()
             if self.camera_enabled:
                 self.update_camera_position()
@@ -328,27 +367,22 @@ class SimulationNode(Node):
         norm = np.sqrt(qw*qw + qx*qx + qy*qy + qz*qz)
         return qx/norm, qy/norm, qz/norm, qw/norm
 
-    def handle_joint_command(self, request, response):
+    def handle_joint_trajectory(self, request, response):
         try:
-            p_client = self.sim_interface.pybullet_client
-            self.get_logger().debug('Received joint command')
-            for i, pos in enumerate(request.position):
-                if i < self.num_joints:
-                    p_client.setJointMotorControl2(
-                        bodyUniqueId=self.robot_id,
-                        jointIndex=i,
-                        controlMode=p_client.POSITION_CONTROL,
-                        targetPosition=pos,
-                        targetVelocity=request.velocity[i] if i < len(request.velocity) else 0,
-                        positionGain=0.5,
-                        velocityGain=1.0,
-                        force=500
-                    )
-            p_client.stepSimulation()
+            # Reshape flattened trajectory to 2D array (num_waypoints x num_joints)
+            num_waypoints = request.num_waypoints
+            traj_array = np.array(request.trajectory).reshape((num_waypoints, self.num_joints))
+            self.get_logger().info(f"Received trajectory with {num_waypoints} waypoints, time_step {request.time_step}")
+            self.trajectory = traj_array
+            self.trajectory_index = 0
+            self.trajectory_time_step = request.time_step
+            self.trajectory_last_update_time = None
             response.success = True
+            response.message = "Trajectory accepted"
         except Exception as e:
-            self.get_logger().error(f'Joint command error: {str(e)}')
+            self.get_logger().error(f"Trajectory execution error: {e}")
             response.success = False
+            response.message = str(e)
         return response
 
     def handle_get_state(self, request, response):
