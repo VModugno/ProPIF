@@ -24,40 +24,33 @@ class PerceptionNode(Node):
     def __init__(self):
         super().__init__('perception_node')
         
-        # Declare parameters
-        self.declare_parameter('classes', ["leaf", "tree", "plant", "flower", ""])
-        self.declare_parameter('debug_windows', False)
-        self.declare_parameter('use_sfm_reconstruction', False)  # Plan B: Use SFM reconstruction instead of direct pose
-        self.declare_parameter('reconstruction_image_count', 10)  # Number of images to collect for reconstruction
-        self.declare_parameter('frame_id', 'map')  # Frame ID for publishing visualization markers
+        self.classes = ['flower', 'leaf', 'tree', 'plant', '']
+        self.debug_windows = False
+        self.use_sfm_reconstruction = False
+        self.reconstruction_image_count = 10
+        self.frame_id = 'map'
         
-        # Get parameters
-        self.classes = self.get_parameter('classes').value
-        self.debug_windows = self.get_parameter('debug_windows').value
-        self.use_sfm_reconstruction = self.get_parameter('use_sfm_reconstruction').value
-        self.reconstruction_image_count = self.get_parameter('reconstruction_image_count').value
-        self.frame_id = self.get_parameter('frame_id').value
-
+        # Determine device
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
         # Initialize detected planes list
         self.detected_planes = []
         
-        # Create CvBridge to convert ROS images to OpenCV format
+        # Create CvBridge to convert ROS images to OpenCV
         self.bridge = CvBridge()
         
         # Initialize camera parameters
         self.camera_intrinsics = None
         self.rotation_matrix = None
         self.translation_vector = None
-        self.cam_loc_manager = None  # Still needed for SFM mode
+        self.cam_loc_manager = None  # Only used if SFM is needed
         
-        # Initialize state variables
+        # Initialize SFM-related state
         self.sfm_initialized = False
         self.collected_images_count = 0
-        self.collection_mode = self.use_sfm_reconstruction  # Start in collection mode if using SFM
+        self.collection_mode = self.use_sfm_reconstruction  # SFM or not
         
-        # Create directories for SFM reconstruction if needed
+        # If using SFM, set up directories for reconstruction
         if self.use_sfm_reconstruction:
             self.setup_sfm_directories()
         
@@ -79,20 +72,22 @@ class PerceptionNode(Node):
         self.latest_color = None
         self.latest_depth = None
         
-        # Initialize YOLO model and feature manager
+        # Initialize YOLO model (or any other model) + feature manager
         self.load_yolo_model()
         self.featMan = FeatureManager(self.device, len(self.classes))
         
-        # Create timer for processing images
+        # Create a timer for processing images (10Hz)
         self.timer = self.create_timer(0.1, self.process_images)
-        # Create timer for updating camera pose
-        if not self.use_sfm_reconstruction:  # Only for planA, 10hz
+        
+        # If not using SFM, we rely on direct camera pose (Plan A), so set a separate timer
+        if not self.use_sfm_reconstruction:
             self.camera_pose_timer = self.create_timer(0.1, self.update_camera_pose)
         
-        # Service to toggle collection mode for SFM
+        # If using SFM, optionally provide a service to toggle collection mode
         if self.use_sfm_reconstruction:
             self.create_service(Trigger, 'toggle_collection_mode', self.toggle_collection_mode_callback)
         
+        # Log info
         self.get_logger().info('Perception node initialized')
         if self.use_sfm_reconstruction:
             self.get_logger().info('Using SFM reconstruction mode (Plan B)')
@@ -427,6 +422,24 @@ class PerceptionNode(Node):
             msg.centroid.x = float(plane.centroid[0])
             msg.centroid.y = float(plane.centroid[1])
             msg.centroid.z = float(plane.centroid[2])
+            
+            # # Debug: Add 3d points
+            # if hasattr(plane, 'threed_object') and plane.threed_object is not None:
+            #     # points cloud (world frame)
+            #     points = plane.threed_object.get_point_cloud_points()
+                
+            #     # add limits, only send 300 points
+            #     max_points = min(300, len(points))
+            #     step = max(1, len(points) // max_points)
+                
+            #     for i in range(0, len(points), step):
+            #         point = Point()
+            #         point.x = float(points[i][0])
+            #         point.y = float(points[i][1])
+            #         point.z = float(points[i][2])
+            #         msg.point_cloud.append(point)
+                
+            #     self.get_logger().info(f"Added {len(msg.point_cloud)} points to PlaneInfo message")
             
             # Publish message
             self.plane_info_pub.publish(msg)
