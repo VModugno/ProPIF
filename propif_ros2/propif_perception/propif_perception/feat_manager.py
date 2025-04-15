@@ -12,6 +12,7 @@ class PlaneInfo:
     object_idx: int
     normal: np.ndarray  # shape (3,) float
     centroid: np.ndarray # shape (3,) float
+    threed_object: object = None
 
 
 class FeatureManager:
@@ -121,7 +122,8 @@ class FeatureManager:
                 info = PlaneInfo(
                     object_idx=obj_idx,
                     normal=normal,
-                    centroid=centroid
+                    centroid=centroid,
+                    threed_object=three_d_object
                 )
                 plane_info_list.append(info)
         
@@ -239,9 +241,7 @@ class FeatureManager:
 
     def store_new_2dobjects(self,rois):
         for idx, _ in enumerate(rois.images):
-            #! We only add flower objects for now
-            if rois.classes[idx] == 0.0:
-                self.objects2dMan.add_potential_object(
+            self.objects2dMan.add_potential_object(
                 rois.features[idx]['keypoints'],
                 rois.features[idx]['descriptors'],
                 rois.classes[idx],

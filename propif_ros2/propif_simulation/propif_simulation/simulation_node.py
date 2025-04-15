@@ -11,6 +11,7 @@ from std_msgs.msg import String
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Image, CameraInfo
 from propif_msgs.srv import ExecuteJointTrajectory, GetRobotState
+from propif_msgs.msg import PlaneInfo
 
 from simulation_and_control import pb
 
@@ -26,6 +27,11 @@ class SimulationNode(Node):
         self.simulation_rate = 100.0
         self.gui_enabled = True
         self.camera_enabled = True
+
+        # Debug
+        # self.planes_debug = []
+        # self.create_subscription(PlaneInfo, '/detected_planes', self.plane_info_callback, 10)
+        # self.point_cloud_ids = []
         
         self.load_robot()
         self.load_flower()
@@ -60,6 +66,26 @@ class SimulationNode(Node):
         self.trajectory_index = 0
         self.trajectory_time_step = None
         self.trajectory_last_update_time = None
+    
+    # Debug
+    def plane_info_callback(self, msg):
+        self.planes_debug.append(msg)
+    
+        if not hasattr(msg, 'point_cloud'):
+            self.get_logger().warn("No point cloud data in message")
+            return
+        if hasattr(msg, 'point_cloud') and len(msg.point_cloud) == 0:
+            self.get_logger().warn("Point cloud data is empty")
+            return
+        if hasattr(msg, 'point_cloud') and len(msg.point_cloud) > 0:
+            points = []
+            for point in msg.point_cloud:
+                points.append([point.x, point.y, point.z])
+            
+            # Visualize the point cloud
+            self.visualize_point_cloud(points, color=[0, 1, 0], point_size=4.0)
+            self.get_logger().info(f"Visualizing point cloud with {len(points)} points")
+            
 
     def load_robot(self):
         try:
@@ -213,6 +239,15 @@ class SimulationNode(Node):
                         force=500
                     )
             p_client.stepSimulation()
+            # Debug, visualize normal
+            # for plane in self.planes_debug:
+            #     centroid = [plane.centroid.x, plane.centroid.y, plane.centroid.z]
+            #     normal = [plane.normal.x, plane.normal.y, plane.normal.z]
+            #     scale = 0.3  # Length of norml to view
+            #     end_point = [centroid[0] + normal[0]*scale,
+            #                 centroid[1] + normal[1]*scale,
+            #                 centroid[2] + normal[2]*scale]
+            #     p_client.addUserDebugLine(centroid, end_point, lineColorRGB=[1, 0, 0], lineWidth=4, lifeTime=0.1)
             if self.camera_enabled:
                 self.update_camera_position()
                 self.publish_camera_data()
@@ -252,6 +287,8 @@ class SimulationNode(Node):
     def publish_camera_data(self):
         try:
             p_client = self.sim_interface.pybullet_client
+
+            # 1) Capture rendered image from PyBullet
             img_data = p_client.getCameraImage(
                 width=self.camera_width,
                 height=self.camera_height,
@@ -259,26 +296,44 @@ class SimulationNode(Node):
                 projectionMatrix=self.projection_matrix,
                 renderer=p_client.ER_BULLET_HARDWARE_OPENGL
             )
+
+            # 2) Extract color channels (RGBA -> BGR)
             rgb_array = np.array(img_data[2], dtype=np.uint8)
             rgb_array = np.reshape(rgb_array, (self.camera_height, self.camera_width, 4))
-            rgb_array = rgb_array[:, :, :3]
-            bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+            bgr_array = cv2.cvtColor(rgb_array[:, :, :3], cv2.COLOR_RGB2BGR)
+
+            # 3) Compute depth in meters from PyBullet buffers
             depth_buffer = np.array(img_data[3], dtype=np.float32)
-            depth = self.far_plane * self.near_plane / (
+            depth_in_meters = self.far_plane * self.near_plane / (
                 self.far_plane - (self.far_plane - self.near_plane) * depth_buffer
             )
+
+            # 4) Convert from meters to millimeters, then to 16-bit
+            depth_in_mm_float = depth_in_meters * 1000.0
+            depth_in_mm_16u = np.clip(depth_in_mm_float, 0, 65535).astype(np.uint16)
+
+            # 5) Construct ROS Image messages
             now = self.get_clock().now().to_msg()
+
+            # Color message
             rgb_msg = self.bridge.cv2_to_imgmsg(bgr_array, encoding='bgr8')
             rgb_msg.header.stamp = now
             rgb_msg.header.frame_id = 'camera_link'
-            depth_msg = self.bridge.cv2_to_imgmsg(depth, encoding='32FC1')
+
+            # Depth message in 16UC1 with mm units
+            depth_msg = self.bridge.cv2_to_imgmsg(depth_in_mm_16u, encoding='16UC1')
             depth_msg.header.stamp = now
             depth_msg.header.frame_id = 'camera_link'
+
+            # CameraInfo message
             self.camera_info_msg.header.stamp = now
             self.camera_info_msg.header.frame_id = 'camera_link'
+
+            # 6) Publish all
             self.rgb_pub.publish(rgb_msg)
             self.depth_pub.publish(depth_msg)
             self.camera_info_pub.publish(self.camera_info_msg)
+
         except Exception as e:
             self.get_logger().error(f'Failed to publish camera data: {str(e)}')
 
@@ -316,26 +371,80 @@ class SimulationNode(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to publish TF transforms: {str(e)}')
     
+    # Debug
+    def visualize_point_cloud(self, points, color=[0, 1, 0], point_size=3.0):
+        """Visualize points cloud in PyBullet"""
+        p_client = self.sim_interface.pybullet_client
+        
+        # Remove previous point cloud if it exists
+        if hasattr(self, 'point_cloud_ids') and self.point_cloud_ids:
+            for point_id in self.point_cloud_ids:
+                p_client.removeUserDebugItem(point_id)
+        
+        self.point_cloud_ids = []
+        
+        # Add points
+        self.get_logger().info(f"Visualizing point cloud with {len(points)} points")
+        # self.get_logger().info(points)
+        if len(points) > 0:
+            point_id = p_client.addUserDebugPoints(
+                pointPositions=points,
+                pointColorsRGB=[color] * len(points),
+                pointSize=point_size,
+                lifeTime=0
+            )
+            self.point_cloud_ids.append(point_id)
+            self.get_logger().info(f"Point cloud shown, ID: {point_id}, num: {len(points)}")
+    
     def publish_camera_transform(self, timestamp):
+        # Create a TransformStamped message for the camera pose
         camera_transform = TransformStamped()
         camera_transform.header.stamp = timestamp
         camera_transform.header.frame_id = 'world'
         camera_transform.child_frame_id = 'camera_link'
+
+        # Set the translation part of the transform from the stored camera position
         camera_transform.transform.translation.x = self.camera_position[0]
         camera_transform.transform.translation.y = self.camera_position[1]
         camera_transform.transform.translation.z = self.camera_position[2]
+
+        # Compute the forward vector (camera Z+) by subtracting the camera position from the camera target
         forward = np.array(self.camera_target) - np.array(self.camera_position)
-        forward = forward / np.linalg.norm(forward)
-        up = np.array(self.camera_up)
-        right = np.cross(forward, up)
+        forward = forward / np.linalg.norm(forward)  # Normalize the forward vector
+
+        # Use the world's Z-axis ([0, 0, 1]) to compute the camera's right axis (X+)
+        world_up = np.array([0, 0, 1])
+        right = np.cross(forward, world_up)
+
         right = right / np.linalg.norm(right)
-        up = np.cross(right, forward)
-        rot_matrix = np.column_stack((right, up, -forward))
+
+        # Compute the camera's up axis (Y-) by crossing right with forward
+        camera_up = np.cross(right, forward)
+        camera_up = camera_up / np.linalg.norm(camera_up)
+
+        # Build the rotation matrix from the three axis vectors:
+        # X = right, Y = -camera_up (downward), Z = forward
+        rot_matrix = np.column_stack((right, -camera_up, forward))
+
+        # Debug prints for verifying the transform logic
+        # print("\n==== Camera Transform Debug (Modified) ====")
+        # print(f"Camera position: {self.camera_position}")
+        # print(f"Camera target: {self.camera_target}")
+        # print(f"Forward vector (camera Z+): {forward}")
+        # print(f"Right vector (camera X+): {right}")
+        # print(f"Camera up vector (camera Y-): {-camera_up}")
+        # print(f"Rotation matrix (XYZ columns):\n{rot_matrix}")
+
+        # Convert the rotation matrix to a quaternion
         qx, qy, qz, qw = self.rotation_matrix_to_quaternion(rot_matrix)
+
+        # Fill in the rotation of the transform
         camera_transform.transform.rotation.x = qx
         camera_transform.transform.rotation.y = qy
         camera_transform.transform.rotation.z = qz
         camera_transform.transform.rotation.w = qw
+
+        # Publish the transform
         self.tf_broadcaster.sendTransform(camera_transform)
     
     def rotation_matrix_to_quaternion(self, R):
@@ -372,7 +481,8 @@ class SimulationNode(Node):
             # Reshape flattened trajectory to 2D array (num_waypoints x num_joints)
             num_waypoints = request.num_waypoints
             traj_array = np.array(request.trajectory).reshape((num_waypoints, self.num_joints))
-            self.get_logger().info(f"Received trajectory with {num_waypoints} waypoints, time_step {request.time_step}")
+            # Debug
+            # self.get_logger().info(f"Received trajectory with {num_waypoints} waypoints, time_step {request.time_step}")
             self.trajectory = traj_array
             self.trajectory_index = 0
             self.trajectory_time_step = request.time_step

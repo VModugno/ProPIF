@@ -51,8 +51,14 @@ class Potential2dObject:
         alpha_sum = np.sum(self.alpha)
         expected_probs = self.alpha / alpha_sum
         max_prob = np.max(expected_probs)
+        max_class = np.argmax(expected_probs)
         # TODO: Check if model completed when using plan B
-        return max_prob > 0.9
+        #! We only focus on flower so we filter object that are not flower
+        if max_class == 0 and max_prob > 0.9:
+            return True
+        else:
+            return False
+
 
     
     def filter_SAM(self, mask):
@@ -161,6 +167,7 @@ class ThreeDObject:
             y = (v - cy) * d_in_m / fy
             z = d_in_m
             points_camera.append([x, y, z])
+
         points_camera = np.array(points_camera)
 
         if points_camera.size == 0:
@@ -171,7 +178,7 @@ class ThreeDObject:
             self.point_cloud.points = o3d.utility.Vector3dVector(global_points)
             
             # # Remove statistical outliers
-            cl, ind = self.point_cloud.remove_statistical_outlier(nb_neighbors=40, std_ratio=1.0)
+            cl, ind = self.point_cloud.remove_statistical_outlier(nb_neighbors=40, std_ratio=0.5)
             self.point_cloud = self.point_cloud.select_by_index(ind)
 
     def compute_main_plane(self, distance_threshold=0.01, ransac_n=3, num_iterations=1000):
@@ -209,7 +216,11 @@ class ThreeDObject:
         centroid = inlier_points.mean(axis=0)
 
         return normal, centroid
-
+    
+    def get_point_cloud_points(self):
+        if self.point_cloud is None or len(np.asarray(self.point_cloud.points)) == 0:
+            return []
+        return np.asarray(self.point_cloud.points)
 
     def visualize(self):
         o3d.visualization.draw_geometries([self.point_cloud])

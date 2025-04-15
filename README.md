@@ -94,3 +94,71 @@ Inside Terminal C, to start perception node. Cd to ProPif/propif_ros2, then:
 source install/setup.bash # change to setup.zsh if you are using zsh
 ros2 launch propif_perception perception.launch.py 
 ```
+
+## Appendix
+
+### Path Modifications
+
+You need to modify a few paths to correctly load the model/config:
+
+- In `configs/pandaconfig.yaml`, on **line 5**, change the path to:  
+  `{Your_Work_Space}/models/panda_description/panda.urdf`
+
+- In the **control node**, on **line 30**, change the path to:  
+  `{Your_Work_Space}/configs/pandaconfig.yaml`
+
+- In the **simulation node**, on **lines 93 and 115**, set the **config directory** to your **workspace directory**.
+
+To better monitor the status of each node, the current bringup launch includes only two nodes (**simulation** and **control**). The perception node prints out many outputs from YOLO, I have no idea how to mute it so I split it out.
+You need to use **two terminals** to fully run the project.
+
+One for bringup launch:
+
+```
+ros2 launch propif_bringup system.launch.py
+```
+
+One for perception node launch:
+
+```
+ros2 launch propif_perception perception.launch.py
+```
+
+### TODO List
+
+We currently divide the entire pipeline into **3 phases**:
+
+#### Phase 1  
+
+The controller should move the robotic arm around the target area to capture images and detect all targets.  
+The **perception node** will:
+- Perform visual detection  
+- Store all detected 3D objects  
+- Publish the main planes of these targets  
+
+#### Phase 2  
+
+The controller will move the robotic arm to each target’s main plane and perform interaction tasks.
+
+#### Phase 3  
+
+The robotic arm returns to its original position.
+
+---
+
+### Current Progress
+
+- ✅ **Phase 1** perception node is completed and briefly tested.
+- ⚠️ **Phase 1** has a working service interface that allows the arm to move among three predefined points.  
+  However:
+  - The arm cannot **consistently face** the target area.
+  - The **movement range** is too limited.
+
+> Note1: All three phases use the **same set of control services**.  
+> Solving Phase 1’s issues should also resolve problems in Phases 2 and 3.
+>
+> Note2: For depth images, we assume the unit is **millimeters** by default.
+>
+> The 3DObject class in the **perception node** will handle a **unit conversion** (to **meters**),
+>
+> so there’s **no need** to perform unit conversion in the **simulation node** or during **real-world experiments** in advance.
