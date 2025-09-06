@@ -123,23 +123,3 @@ One for perception node launch:
 ```
 ros2 launch propif_perception perception.launch.py
 ```
-
-### TODO List
-
-We currently divide the entire pipeline into **3 phases**:
-
-#### Phase 1  
-
-The controller should move the robotic arm around the target area to capture images and detect all targets.  
-The **perception node** will:
-- Perform visual detection  
-- Store all detected 3D objects  
-- Publish the main planes of these targets  
-
-#### Phase 2  
-
-The controller will move the robotic arm to each target’s main plane and perform interaction tasks.
-
-#### Phase 3  
-
-The robotic arm returns to its original position.
