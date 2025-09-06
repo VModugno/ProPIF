@@ -143,22 +143,3 @@ The controller will move the robotic arm to each target’s main plane and perfo
 #### Phase 3  
 
 The robotic arm returns to its original position.
-
----
-
-### Current Progress
-
-- ✅ **Phase 1** perception node is completed and briefly tested.
-- ⚠️ **Phase 1** has a working service interface that allows the arm to move among three predefined points.  
-  However:
-  - The arm cannot **consistently face** the target area.
-  - The **movement range** is too limited.
-
-> Note1: All three phases use the **same set of control services**.  
-> Solving Phase 1’s issues should also resolve problems in Phases 2 and 3.
->
-> Note2: For depth images, we assume the unit is **millimeters** by default.
->
-> The 3DObject class in the **perception node** will handle a **unit conversion** (to **meters**),
->
-> so there’s **no need** to perform unit conversion in the **simulation node** or during **real-world experiments** in advance.
