@@ -1,6 +1,6 @@
 # GUIDE
 
-# installation:
+# Installation:
 
 To run this project, we strongly recommend that you use Conda-Mamba to manage the python environment. 
 
@@ -13,7 +13,7 @@ mamba env create -f environment.yml
 conda activate propif_ros2
 ```
 
-To download and install lightglue ensure that the terminal env is pan_seg_3d (in any folder you like):
+To download and install lightglue ensure that the terminal env is propif_ros2 (in any folder you like):
 ```
 git clone https://github.com/cvg/LightGlue.git && cd LightGlue
 python -m pip install -e .
@@ -50,9 +50,21 @@ cd simulation_and_control
 pip install .
 ```
 
-# execute
+# Execute
 
 After installing all the dependencies above, we can start executing the project.
+
+Reinstall all colcon-related packages and rebuild colcon.
+
+```
+mamba activate propif_ros2
+for pkg in $(mamba list | grep colcon | awk '{print $1}'); do mamba remove -y $pkg; done
+mamba install colcon-common-extensions  # if it fails, use pip
+cd YOUR_PATH/ProPIF/propif_ros2
+rm -rf build/ install/ log/
+colcon build --symlink-install
+source install/setup.bash
+```
 
 We provide a launch file for you to launch control node, perception node and simulation node together.
 
@@ -74,7 +86,7 @@ colcon build
 
 Now start up 3 terminals, terminal A, B and C.
 
-Inside Terminal A, toi start simulation node. Cd to ProPif/propif_ros2, then:
+Inside Terminal A, to start simulation node. Cd to ProPif/propif_ros2, then:
 
 ```
 source install/setup.bash # change to setup.zsh if you are using zsh
