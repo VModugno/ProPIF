@@ -90,7 +90,7 @@ class SimulationNode(Node):
     def load_robot(self):
         try:
             #! Change to your own robot config path
-            config_dir = "/home/steve/UCL_RAI/ProPIF"
+            config_dir = "/home/pengyuan/projects/mobile-levitator/ProPIF"
             self.get_logger().info(f'Loading robot config from: {os.path.join(config_dir, self.robot_config)}')
             self.sim_interface = pb.SimInterface(
                 self.robot_config, 
@@ -112,7 +112,7 @@ class SimulationNode(Node):
     def load_flower(self):
         try:
             #! Change to your own flower model path
-            config_dir = "/home/steve/UCL_RAI/ProPIF"
+            config_dir = "/home/pengyuan/projects/mobile-levitator/ProPIF"
             flower_path = os.path.join(config_dir, "models", "objects", self.flower_model)
             p_client = self.sim_interface.pybullet_client
             flower_position = [1.0, 0.0, 0.05]
